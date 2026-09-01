@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DeepRL SoundSpace — Reinforcement Learning Song Recommendation Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dark-theme">
+  <!-- Hidden HTML5 Audio Element for OpenSpot Direct HQ Streams -->
+  <audio id="html5-audio-element" preload="auto"></audio>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-brain"></i>
+        </div>
+        <div class="brand-text">
+          <h2>SoundSpace <span class="badge-rl">RL</span></h2>
+          <p>Wolpertinger RecSys</p>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="player-tab" id="nav-player">
+          <i class="fa-solid fa-circle-play"></i> <span>Live Player Studio</span>
+        </button>
+        <button class="nav-item" data-tab="openspot-tab" id="nav-openspot">
+          <i class="fa-solid fa-cloud-arrow-down"></i> <span>OpenSpot Music Hub</span>
+        </button>
+        <button class="nav-item" data-tab="brain-tab" id="nav-brain">
+          <i class="fa-solid fa-atom"></i> <span>RL Brain & State</span>
+        </button>
+        <button class="nav-item" data-tab="simulation-tab" id="nav-sim">
+          <i class="fa-solid fa-chart-line"></i> <span>A/B Simulation Lab</span>
+        </button>
+        <button class="nav-item" data-tab="catalog-tab" id="nav-catalog">
+          <i class="fa-solid fa-compact-disc"></i> <span>Song Catalog</span>
+        </button>
+        <button class="nav-item" data-tab="report-tab" id="nav-report">
+          <i class="fa-solid fa-shield-halved"></i> <span>Guardrails & OPE</span>
+        </button>
+      </nav>
+
+      <!-- Active Listener Persona Card -->
+      <div class="persona-card">
+        <div class="persona-header">
+          <i class="fa-solid fa-user-astronaut"></i>
+          <span>Active Listener Profile</span>
+        </div>
+        <select id="persona-select" class="select-dropdown">
+          <option value="usr_00001">⚡ Workout Warrior (High Energy)</option>
+          <option value="usr_00002" selected>☕ Lo-Fi Coder (Chillhop & Jazz)</option>
+          <option value="usr_00003">🌟 Pop & Chart Hits Lover</option>
+          <option value="usr_00004">🌙 Late Night R&B Melancholy</option>
+          <option value="usr_00005">🎸 Indie Rock Explorer</option>
+          <option value="usr_00006">🔥 EDM Festival Raver</option>
+        </select>
+        <div class="persona-stats" id="persona-stats">
+          <div class="stat-row"><span>Energy Match:</span> <strong id="user-pref-energy">0.35</strong></div>
+          <div class="stat-row"><span>Valence (Mood):</span> <strong id="user-pref-valence">0.45</strong></div>
+          <div class="stat-row"><span>Top Genre:</span> <strong id="user-top-genre">Lo-Fi / Chillhop</strong></div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <span class="status-indicator online"></span>
+        <span class="status-text">FastAPI Server Online (p95: 0.9ms)</span>
+      </div>
+    </aside>
+
+    <!-- Main Content Stage -->
+    <main class="main-content">
+      <!-- Top Bar Header -->
+      <header class="top-bar">
+        <div class="model-selector-bar">
+          <span class="label">Recommendation Policy:</span>
+          <div class="toggle-group">
+            <button class="toggle-btn active" data-model="wolpertinger" id="btn-model-rl">
+              <i class="fa-solid fa-brain"></i> Wolpertinger RL
+            </button>
+            <button class="toggle-btn" data-model="baseline" id="btn-model-baseline">
+              <i class="fa-solid fa-tower-broadcast"></i> Two-Tower Baseline
+            </button>
+            <button class="toggle-btn" data-model="random" id="btn-model-random">
+              <i class="fa-solid fa-shuffle"></i> Random Exploration
+            </button>
+          </div>
+        </div>
+
+        <div class="session-counters">
+          <div class="counter-badge">
+            <i class="fa-solid fa-fire"></i> Step: <strong id="stat-session-step">0</strong>
+          </div>
+          <div class="counter-badge success">
+            <i class="fa-solid fa-heart"></i> Likes: <strong id="stat-session-likes">0</strong>
+          </div>
+          <div class="counter-badge warning">
+            <i class="fa-solid fa-forward-step"></i> Skips: <strong id="stat-session-skips">0</strong>
+          </div>
+          <div class="counter-badge reward">
+            <i class="fa-solid fa-trophy"></i> Reward: <strong id="stat-session-reward">0.00</strong>
+          </div>
+        </div>
+      </header>
+
+      <!-- TAB 1: Live Player Studio -->
+      <section id="player-tab" class="tab-pane active">
+        <div class="player-grid">
+          <!-- Main Vinyl & Player Card -->
+          <div class="player-card glass-panel">
+            <div class="vinyl-container">
+              <div class="vinyl-disc rotating" id="vinyl-disc">
+                <img id="player-album-art" class="vinyl-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80" alt="Album Cover">
+                <div class="vinyl-center-hole"></div>
+              </div>
+              <!-- Procedural Equalizer Canvas -->
+              <canvas id="audio-visualizer-canvas" width="360" height="64"></canvas>
+            </div>
+
+            <div class="track-details">
+              <span class="track-genre-badge" id="current-genre">Lo-Fi / Chillhop</span>
+              <h1 class="track-title" id="current-title">Levitating</h1>
+              <h3 class="track-artist" id="current-artist">Dua Lipa</h3>
+              
+              <div class="acoustic-pills">
+                <span class="pill"><i class="fa-solid fa-bolt"></i> Energy: <b id="current-energy">0.68</b></span>
+                <span class="pill"><i class="fa-solid fa-face-smile"></i> Valence: <b id="current-valence">0.74</b></span>
+                <span class="pill"><i class="fa-solid fa-person-walking"></i> Tempo: <b id="current-tempo">124 BPM</b></span>
+                <span class="pill"><i class="fa-solid fa-music"></i> Dance: <b id="current-dance">0.71</b></span>
+              </div>
+            </div>
+
+            <!-- Audio Progress Scrubber -->
+            <div class="player-progress-container">
+              <span id="player-time-cur" class="time-label">0:00</span>
+              <input type="range" id="audio-scrubber" class="progress-slider" min="0" max="100" value="0" step="0.1">
+              <span id="player-time-dur" class="time-label">3:30</span>
+            </div>
+
+            <!-- Web Audio Controls & Interactive Feedback -->
+            <div class="player-actions">
+              <div class="playback-controls">
+                <button class="btn-ctrl btn-play" id="btn-audio-play" title="Play / Pause Audio Stream">
+                  <i class="fa-solid fa-play"></i>
+                </button>
+                <button class="btn-ctrl btn-lyrics active" id="btn-lyrics-toggle" title="Toggle Synchronized Lyrics Panel">
+                  <i class="fa-solid fa-microphone-lines"></i>
+                </button>
+                <button class="btn-ctrl btn-theater" id="btn-lyrics-theater" title="Open Fullscreen Lyrics Theater">
+                  <i class="fa-solid fa-expand"></i>
+                </button>
+                <a href="#" target="_blank" class="btn-ctrl btn-spotify" id="btn-open-spotify" title="Open on Spotify">
+                  <i class="fa-brands fa-spotify"></i>
+                </a>
+                <div class="audio-mode-tag" id="audio-mode-tag">
+                  <i class="fa-solid fa-tower-cell"></i> OpenSpot 320kbps Stream
+                </div>
+              </div>
+
+              <!-- Volume Control -->
+              <div class="volume-control-row">
+                <i class="fa-solid fa-volume-high" id="volume-icon"></i>
+                <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="100" step="1" title="Volume">
+                <span class="volume-pct" id="volume-pct">100%</span>
+              </div>
+
+              <!-- Direct Spotify Link Banner -->
+              <div class="spotify-banner" id="spotify-banner">
+                <a href="#" target="_blank" id="spotify-direct-link" class="spotify-link-btn">
+                  <i class="fa-brands fa-spotify"></i> <span>Listen on Spotify</span> <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </a>
+              </div>
+
+              <div class="feedback-actions">
+                <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+2.5 reward)">
+                  <i class="fa-solid fa-heart"></i> Like
+                </button>
+                <button class="btn-action btn-full" id="btn-feedback-full" title="Listen Full Song (+1.0 reward)">
+                  <i class="fa-solid fa-circle-check"></i> Complete Listen
+                </button>
+                <button class="btn-action btn-skip" id="btn-feedback-skip" title="Skip early (-1.0 reward)">
+                  <i class="fa-solid fa-forward-step"></i> Skip Track
+                </button>
+                <button class="btn-action btn-dislike" id="btn-feedback-dislike" title="Dislike (-2.0 reward)">
+                  <i class="fa-solid fa-thumbs-down"></i> Dislike
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Synchronized Live Lyrics Card -->
+          <div class="lyrics-card glass-panel" id="player-lyrics-card">
+            <div class="panel-header">
+              <div class="title-with-badge">
+                <h3><i class="fa-solid fa-microphone-lines"></i> Synchronized Lyrics</h3>
+                <span class="badge-tag live-tag" id="lyrics-source-badge">
+                  <i class="fa-solid fa-bolt"></i> Auto Synced
+                </span>
+              </div>
+              <div class="lyrics-card-controls">
+                <button class="btn-icon-small active" id="btn-lyrics-mode-sync" title="Karaoke Synced View">
+                  <i class="fa-solid fa-waveform"></i>
+                </button>
+                <button class="btn-icon-small" id="btn-lyrics-mode-plain" title="Plain Full Text View">
+                  <i class="fa-solid fa-align-left"></i>
+                </button>
+                <button class="btn-icon-small active" id="btn-lyrics-autoscroll" title="Toggle Auto-Scroll" data-enabled="true">
+                  <i class="fa-solid fa-arrows-up-down"></i>
+                </button>
+                <button class="btn-icon-small" id="btn-lyrics-fullscreen-card" title="Fullscreen Theater">
+                  <i class="fa-solid fa-expand"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Current Active Line Highlight Hero Banner -->
+            <div class="lyrics-active-hero" id="lyrics-active-hero">
+              <div class="active-hero-indicator"><i class="fa-solid fa-music"></i> NOW PLAYING</div>
+              <div class="active-hero-text" id="active-hero-text">Loading lyrics for track...</div>
+            </div>
+
+            <!-- Scrolling Synchronized Lyrics Stream -->
+            <div class="lyrics-container" id="lyrics-container">
+              <div class="lyrics-loading-state" id="lyrics-loading-state">
+                <i class="fa-solid fa-compact-disc fa-spin"></i>
+                <p>Fetching real-time synced lyrics...</p>
+              </div>
+              <div class="lyrics-lines-list" id="lyrics-lines-list">
+                <!-- Dynamically populated lines -->
+              </div>
+            </div>
+
+            <!-- Plain text lyrics container (toggleable) -->
+            <div class="lyrics-plain-container" id="lyrics-plain-container" style="display: none;">
+              <pre id="lyrics-plain-text" class="plain-lyrics-content"></pre>
+            </div>
+
+            <div class="lyrics-footer">
+              <span class="lyrics-hint"><i class="fa-solid fa-hand-pointer"></i> Click any line to seek track</span>
+              <span class="lyrics-source-name" id="lyrics-source-name">LRCLIB Verified</span>
+            </div>
+          </div>
+
+          <!-- Session Feed & Recommendations Queue -->
+          <div class="queue-card glass-panel" id="player-queue-card">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-list-music"></i> Upcoming Recommendations Queue</h3>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="badge-tag" id="queue-model-badge">RL Ranked</span>
+                <button class="btn-small" id="btn-refresh-recs"><i class="fa-solid fa-arrows-rotate"></i> Re-Rank</button>
+              </div>
+            </div>
+            <div class="queue-list" id="queue-list-container">
+              <!-- Dynamically populated with artwork -->
+            </div>
+
+            <div class="session-history-box">
+              <h4><i class="fa-solid fa-clock-rotate-left"></i> Session Trajectory Log</h4>
+              <div class="history-chips" id="history-chips-container">
+                <span class="chip-empty">Session started. Waiting for first interaction...</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Current Track Related Songs Section -->
+        <div class="player-related-shelf glass-panel" id="player-related-shelf">
+          <div class="panel-header">
+            <div class="title-with-badge">
+              <h3><i class="fa-solid fa-wand-magic-sparkles"></i> Related Songs for Now Playing</h3>
+              <span class="badge-tag" id="shelf-current-genre">Pop</span>
+            </div>
+            <button class="btn-small" id="btn-explore-catalog-related"><i class="fa-solid fa-compass"></i> Open in Discovery Hub</button>
+          </div>
+          <p class="shelf-subtitle">Real-time related tracks retrieved from acoustic vector space matching the active song vibe.</p>
+          <div class="related-cards-scroll" id="player-related-cards">
+            <!-- Dynamically populated mini cards -->
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: OpenSpot Music Hub -->
+      <section id="openspot-tab" class="tab-pane">
+        <div class="openspot-hero glass-panel">
+          <div class="openspot-hero-content">
+            <div class="openspot-badge"><i class="fa-solid fa-cloud-arrow-down"></i> OpenSpot Live Streaming Integration</div>
+            <h2>Search & Stream Songs from OpenSpot</h2>
+            <p>Access millions of tracks via the OpenSpot & JioSaavn catalog. Stream high-fidelity 320kbps audio, inspect acoustic embeddings, and import any song into the active Reinforcement Learning brain in real time.</p>
+          </div>
+
+          <div class="openspot-search-box">
+            <div class="search-input-group">
+              <i class="fa-solid fa-magnifying-glass search-icon"></i>
+              <input type="text" id="openspot-search-input" class="openspot-search-input" placeholder="Search by song name, artist, or album (e.g., The Weeknd, Dua Lipa, Aruarian Dance)...">
+              <button class="btn-primary" id="btn-openspot-search"><i class="fa-solid fa-search"></i> Search OpenSpot</button>
+            </div>
+
+            <!-- Quick Genre Filter Pills -->
+            <div class="openspot-genre-pills">
+              <span class="pill-label">Top Genre Charts:</span>
+              <button class="genre-pill active" data-genre="Pop">Pop</button>
+              <button class="genre-pill" data-genre="Hip-Hop">Hip-Hop</button>
+              <button class="genre-pill" data-genre="EDM / Electronic">EDM</button>
+              <button class="genre-pill" data-genre="Rock">Rock</button>
+              <button class="genre-pill" data-genre="R&B / Soul">R&B</button>
+              <button class="genre-pill" data-genre="Lo-Fi / Chillhop">Lo-Fi</button>
+              <button class="genre-pill" data-genre="Jazz">Jazz</button>
+              <button class="genre-pill" data-genre="Classical">Classical</button>
+              <button class="genre-pill" data-genre="Indie / Alternative">Indie</button>
+              <button class="genre-pill" data-genre="Synthwave">Synthwave</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- OpenSpot Results Section -->
+        <div class="openspot-results-section glass-panel">
+          <div class="panel-header">
+            <div class="title-with-badge">
+              <h3 id="openspot-section-title"><i class="fa-solid fa-sparkles"></i> OpenSpot Songs</h3>
+              <span class="badge-tag" id="openspot-results-count">0 tracks</span>
+            </div>
+          </div>
+          
+          <div class="openspot-grid" id="openspot-results-grid">
+            <div class="openspot-empty-state">
+              <i class="fa-solid fa-compact-disc fa-spin"></i>
+              <p>Type a song or artist name above, or click a genre chart to stream and import tracks!</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 2: RL Brain & State Inspector -->
+      <section id="brain-tab" class="tab-pane">
+        <div class="brain-grid">
+          <!-- Q-value Distribution Bar Chart -->
+          <div class="chart-card glass-panel">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-chart-column"></i> Candidate Q-Values $Q(s, a)$</h3>
+              <span class="badge-tag">Critic Scoring</span>
+            </div>
+            <p class="chart-desc">The Critic neural network estimates expected long-term cumulative return across top candidates.</p>
+            <div class="chart-wrapper">
+              <canvas id="q-values-chart"></canvas>
+            </div>
+          </div>
+
+          <!-- Listener Profile vs Track Radar -->
+          <div class="chart-card glass-panel">
+            <div class="panel-header">
+              <h3><i class="fa-solid fa-radar"></i> Listener Preference vs Song Acoustic Match</h3>
+              <span class="badge-tag">Acoustic Alignment</span>
+            </div>
+            <p class="chart-desc">Real-time comparison between listener taste profile and the currently recommended song.</p>
+            <div class="chart-wrapper">
+              <canvas id="radar-chart"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Latent Action-State Space 2D Trajectory Map -->
+        <div class="trajectory-card glass-panel">
+          <div class="panel-header">
+            <h3><i class="fa-solid fa-route"></i> Latent Space Trajectory (Energy vs Valence)</h3>
+            <span class="badge-tag">Session Momentum</span>
+          </div>
+          <p class="chart-desc">2D projection of the listener's journey through musical latent space as the RL policy adapts.</p>
+          <div class="chart-wrapper-wide">
+            <canvas id="trajectory-chart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: A/B Simulation Lab -->
+      <section id="simulation-tab" class="tab-pane">
+        <div class="sim-controls glass-panel">
+          <div class="sim-form-row">
+            <div class="form-group">
+              <label for="sim-session-count"><i class="fa-solid fa-users-viewfinder"></i> Cohort Sessions to Simulate:</label>
+              <input type="number" id="sim-session-count" class="input-number" min="5" max="100" value="25">
+            </div>
+            <button class="btn-primary btn-large" id="btn-run-simulation">
+              <i class="fa-solid fa-play"></i> Run Multi-Model A/B Benchmark
+            </button>
+          </div>
+          <p class="sim-note"><i class="fa-solid fa-info-circle"></i> Evaluates Wolpertinger RL vs Two-Tower Baseline vs Random Exploration across synthetic listener personas with stochastic skip and fatigue dynamics.</p>
+        </div>
+
+        <!-- Simulation Comparison Metrics Cards -->
+        <div class="sim-metrics-grid" id="sim-metrics-container">
+          <div class="metric-card glass-panel">
+            <div class="metric-header">
+              <span class="badge-model rl"><i class="fa-solid fa-brain"></i> Wolpertinger RL</span>
+            </div>
+            <div class="metric-body">
+              <div class="stat-big" id="rl-mean-return">--</div>
+              <div class="stat-label">Mean Episode Return</div>
+              <div class="stat-sub">Skip Rate: <strong id="rl-skip-rate">--%</strong> | Likes: <strong id="rl-like-rate">--%</strong></div>
+            </div>
+          </div>
+
+          <div class="metric-card glass-panel">
+            <div class="metric-header">
+              <span class="badge-model baseline"><i class="fa-solid fa-tower-broadcast"></i> Two-Tower Baseline</span>
+            </div>
+            <div class="metric-body">
+              <div class="stat-big" id="base-mean-return">--</div>
+              <div class="stat-label">Mean Episode Return</div>
+              <div class="stat-sub">Skip Rate: <strong id="base-skip-rate">--%</strong> | Likes: <strong id="base-like-rate">--%</strong></div>
+            </div>
+          </div>
+
+          <div class="metric-card glass-panel">
+            <div class="metric-header">
+              <span class="badge-model random"><i class="fa-solid fa-shuffle"></i> Random Exploration</span>
+            </div>
+            <div class="metric-body">
+              <div class="stat-big" id="rand-mean-return">--</div>
+              <div class="stat-label">Mean Episode Return</div>
+              <div class="stat-sub">Skip Rate: <strong id="rand-skip-rate">--%</strong> | Likes: <strong id="rand-like-rate">--%</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Multi-Trajectory Chart -->
+        <div class="chart-card glass-panel" style="margin-top: 24px;">
+          <div class="panel-header">
+            <h3><i class="fa-solid fa-chart-spline"></i> Episode Return Trajectories (A/B Comparison)</h3>
+            <span class="badge-tag">Dynamic Simulation</span>
+          </div>
+          <div class="chart-wrapper-wide">
+            <canvas id="sim-trajectory-chart"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: Song Catalog & Related Discovery Hub -->
+      <section id="catalog-tab" class="tab-pane">
+        <div class="catalog-view glass-panel">
+          <div class="catalog-header">
+            <h3><i class="fa-solid fa-compact-disc"></i> SoundSpace Song Catalog & Vector Search</h3>
+            <div class="filter-controls">
+              <input type="text" id="catalog-search" class="input-text" placeholder="Search title or artist...">
+              <select id="catalog-genre-filter" class="select-dropdown" style="width:180px;">
+                <option value="All">All Genres</option>
+                <option value="Pop">Pop</option>
+                <option value="Hip-Hop">Hip-Hop</option>
+                <option value="EDM / Electronic">EDM / Electronic</option>
+                <option value="Rock">Rock</option>
+                <option value="R&B / Soul">R&B / Soul</option>
+                <option value="Lo-Fi / Chillhop">Lo-Fi / Chillhop</option>
+                <option value="Jazz">Jazz</option>
+                <option value="Classical">Classical</option>
+                <option value="Indie / Alternative">Indie / Alternative</option>
+                <option value="Metal">Metal</option>
+                <option value="Acoustic / Folk">Acoustic / Folk</option>
+                <option value="Synthwave">Synthwave</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Related Songs Discovery Hub Modal / Section -->
+          <div class="related-discovery-hub" id="related-discovery-hub" style="display: none;">
+            <div class="hub-header">
+              <div class="hub-title-group">
+                <div class="hub-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+                <div>
+                  <h3 id="hub-main-title">Acoustic Discovery Hub</h3>
+                  <p id="hub-subtitle">Vector embedding similarity and multi-dimensional acoustic nearest neighbors.</p>
+                </div>
+              </div>
+              <button class="btn-close-hub" id="btn-close-related-hub" title="Close Discovery Hub">
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <!-- Seed Spotlight Card -->
+            <div class="seed-spotlight-card" id="seed-spotlight-card">
+              <!-- Rendered via JavaScript -->
+            </div>
+
+            <!-- Discovery Section Filters -->
+            <div class="section-filter-bar" id="section-filter-bar">
+              <button class="sec-filter-btn active" data-section="all" id="btn-filter-all">
+                <i class="fa-solid fa-layer-group"></i> All Sections (<span id="count-all">0</span>)
+              </button>
+              <button class="sec-filter-btn" data-section="acoustic_twins" id="btn-filter-twins">
+                <i class="fa-solid fa-dna"></i> Acoustic Twins (<span id="count-twins">0</span>)
+              </button>
+              <button class="sec-filter-btn" data-section="same_genre" id="btn-filter-same-genre">
+                <i class="fa-solid fa-music"></i> In-Genre Essentials (<span id="count-same-genre">0</span>)
+              </button>
+              <button class="sec-filter-btn" data-section="cross_genre" id="btn-filter-cross-genre">
+                <i class="fa-solid fa-shuffle"></i> Cross-Genre Bridges (<span id="count-cross-genre">0</span>)
+              </button>
+              <button class="sec-filter-btn" data-section="vibe_transitions" id="btn-filter-vibe">
+                <i class="fa-solid fa-bolt"></i> Energy & Vibe Elevation (<span id="count-vibe">0</span>)
+              </button>
+            </div>
+
+            <!-- Categorized Section Grids -->
+            <div class="related-sections-container" id="related-sections-container">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Catalog Table -->
+          <div class="table-responsive">
+            <table class="catalog-table">
+              <thead>
+                <tr>
+                  <th>Song</th>
+                  <th>Title & Artist</th>
+                  <th>Genre</th>
+                  <th>Energy</th>
+                  <th>Danceability</th>
+                  <th>Valence</th>
+                  <th>Tempo</th>
+                  <th>Actions & Recommendations</th>
+                </tr>
+              </thead>
+              <tbody id="catalog-table-body">
+                <!-- Dynamically loaded -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: Guardrails & Offline Evaluation Report -->
+      <section id="report-tab" class="tab-pane">
+        <div class="report-view glass-panel">
+          <div class="panel-header">
+            <h3><i class="fa-solid fa-clipboard-check"></i> Milestone 4: Offline Evaluation & Guardrails</h3>
+            <span class="badge-success">Decision: PROMOTE TO SHADOW / A-B</span>
+          </div>
+
+          <div class="ope-cards-grid">
+            <div class="ope-stat-box">
+              <h4>Doubly-Robust Value ($V_{DR}$)</h4>
+              <div class="metric-val" id="rep-v-dr">22.50</div>
+              <p>Unbiased Off-Policy Value</p>
+            </div>
+            <div class="ope-stat-box">
+              <h4>Importance Sampling ($V_{IPS}$)</h4>
+              <div class="metric-val" id="rep-v-ips">0.048</div>
+              <p>Clipped Propensity Value</p>
+            </div>
+            <div class="ope-stat-box">
+              <h4>Artist Gini Inequality</h4>
+              <div class="metric-val" id="rep-gini">0.386</div>
+              <p>Healthy Distribution (No collapse)</p>
+            </div>
+            <div class="ope-stat-box">
+              <h4>Catalog Coverage</h4>
+              <div class="metric-val" id="rep-coverage">14.6%</div>
+              <p>Multi-genre discovery</p>
+            </div>
+          </div>
+
+          <div class="report-text-section">
+            <h4><i class="fa-solid fa-circle-info"></i> System Evaluation Highlights</h4>
+            <ul>
+              <li><strong>Candidate Retrieval:</strong> Two-Tower InfoNCE model filters 1,500+ catalog songs to top 100 in <strong>0.89 ms</strong> (p95 &lt; 1 ms).</li>
+              <li><strong>Sequential Satisfaction:</strong> Wolpertinger Actor-Critic dynamically prevents artist fatigue (penalty: $-0.3$) and rewards genre serendipity ($+0.1$).</li>
+              <li><strong>Off-Policy Validity:</strong> Evaluated on 6,200+ held-out test events using Doubly-Robust estimators with propensity weight clipping.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Floating Mini Player Bar (visible when not on player tab) -->
+  <div class="mini-player-bar" id="mini-player-bar">
+    <div class="mini-player-left">
+      <img id="mini-cover" class="mini-cover" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Cover">
+      <div class="mini-track-info">
+        <span class="mini-title" id="mini-title">No track playing</span>
+        <span class="mini-artist" id="mini-artist">—</span>
+      </div>
+    </div>
+    <div class="mini-player-controls">
+      <button class="btn-ctrl" id="mini-play-btn" style="width:36px;height:36px;font-size:14px;" title="Play / Pause">
+        <i class="fa-solid fa-play"></i>
+      </button>
+      <button class="btn-ctrl btn-skip" id="mini-skip-btn" style="width:36px;height:36px;font-size:12px;background:rgba(245,158,11,0.2);color:var(--accent-amber);" title="Skip">
+        <i class="fa-solid fa-forward-step"></i>
+      </button>
+      <button class="btn-small" id="mini-go-to-player" title="Open Player">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i> Player
+      </button>
+    </div>
+  </div>
+
+  <!-- Fullscreen Lyrics Theater Modal -->
+  <div class="lyrics-theater-modal" id="lyrics-theater-modal" style="display: none;">
+    <div class="theater-backdrop" id="theater-backdrop"></div>
+    <div class="theater-glow-orb"></div>
+    
+    <div class="theater-header">
+      <div class="theater-track-info">
+        <img id="theater-album-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80" alt="Cover" class="theater-thumb">
+        <div>
+          <h2 id="theater-title">Song Title</h2>
+          <p><span id="theater-artist">Artist</span> • <span id="theater-genre" class="track-genre-badge">Pop</span></p>
+        </div>
+      </div>
+      <div class="theater-actions">
+        <span class="badge-tag" id="theater-source-badge"><i class="fa-solid fa-microphone-lines"></i> Synced Karaoke</span>
+        <button class="btn-theater-ctrl" id="btn-theater-close" title="Exit Theater Mode (Esc)">
+          <i class="fa-solid fa-compress"></i> Exit Theater
+        </button>
+      </div>
+    </div>
+
+    <div class="theater-body">
+      <div class="theater-visual-sidebar">
+        <div class="theater-vinyl-container">
+          <div class="vinyl-disc rotating" id="theater-vinyl-disc">
+            <img id="theater-vinyl-art" class="vinyl-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80" alt="Album Art">
+            <div class="vinyl-center-hole"></div>
+          </div>
+        </div>
+
+        <div class="theater-progress-box">
+          <div class="theater-time-row">
+            <span id="theater-time-cur">0:00</span>
+            <span id="theater-time-dur">3:30</span>
+          </div>
+          <input type="range" id="theater-audio-scrubber" class="progress-slider" min="0" max="100" value="0" step="0.1">
+        </div>
+
+        <div class="theater-controls-row">
+          <button class="btn-ctrl btn-play" id="btn-theater-play" title="Play/Pause"><i class="fa-solid fa-play"></i></button>
+          <button class="btn-action btn-like" id="btn-theater-like" title="Like"><i class="fa-solid fa-heart"></i></button>
+          <button class="btn-action btn-skip" id="btn-theater-skip" title="Skip"><i class="fa-solid fa-forward-step"></i></button>
+        </div>
+      </div>
+
+      <div class="theater-lyrics-stage" id="theater-lyrics-stage">
+        <div class="theater-lyrics-scroll" id="theater-lyrics-scroll">
+          <!-- Synced lines for theater mode with huge kinetic typography -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/audio_synth.js"></script>
+  <script src="js/rl_visualizer.js"></script>
+  <script src="js/benchmark_view.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

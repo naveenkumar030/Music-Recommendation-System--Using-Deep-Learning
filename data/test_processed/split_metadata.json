@@ -1,0 +1,16 @@
+{
+  "num_users": 50,
+  "num_songs": 120,
+  "total_events": 1603,
+  "total_sessions": 200,
+  "train_sessions": 140,
+  "train_events": 1052,
+  "val_sessions": 30,
+  "val_events": 275,
+  "test_sessions": 30,
+  "test_events": 276,
+  "train_start": 1672580165,
+  "train_cutoff": 1674769286,
+  "val_cutoff": 1675113416,
+  "test_end": 1675804324
+}
