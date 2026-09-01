@@ -111,6 +111,9 @@
           <div class="counter-badge reward">
             <i class="fa-solid fa-trophy"></i> Reward: <strong id="stat-session-reward">0.00</strong>
           </div>
+          <div class="counter-badge context-counter" id="context-badge" title="Current listening context (time of day)">
+            ☕ Morning Focus
+          </div>
         </div>
       </header>
 
@@ -160,9 +163,6 @@
                 <button class="btn-ctrl btn-theater" id="btn-lyrics-theater" title="Open Fullscreen Lyrics Theater">
                   <i class="fa-solid fa-expand"></i>
                 </button>
-                <a href="#" target="_blank" class="btn-ctrl btn-spotify" id="btn-open-spotify" title="Open on Spotify">
-                  <i class="fa-brands fa-spotify"></i>
-                </a>
                 <div class="audio-mode-tag" id="audio-mode-tag">
                   <i class="fa-solid fa-tower-cell"></i> OpenSpot 320kbps Stream
                 </div>
@@ -175,16 +175,12 @@
                 <span class="volume-pct" id="volume-pct">100%</span>
               </div>
 
-              <!-- Direct Spotify Link Banner -->
-              <div class="spotify-banner" id="spotify-banner">
-                <a href="#" target="_blank" id="spotify-direct-link" class="spotify-link-btn">
-                  <i class="fa-brands fa-spotify"></i> <span>Listen on Spotify</span> <i class="fa-solid fa-arrow-up-right-from-square"></i>
-                </a>
-              </div>
-
               <div class="feedback-actions">
                 <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+2.5 reward)">
                   <i class="fa-solid fa-heart"></i> Like
+                </button>
+                <button class="btn-action btn-save" id="btn-playlist-save" title="Save to Playlist (+1.5 reward)">
+                  <i class="fa-solid fa-bookmark"></i> Save
                 </button>
                 <button class="btn-action btn-full" id="btn-feedback-full" title="Listen Full Song (+1.0 reward)">
                   <i class="fa-solid fa-circle-check"></i> Complete Listen
@@ -254,23 +250,109 @@
 
           <!-- Session Feed & Recommendations Queue -->
           <div class="queue-card glass-panel" id="player-queue-card">
-            <div class="panel-header">
-              <h3><i class="fa-solid fa-list-music"></i> Upcoming Recommendations Queue</h3>
-              <div style="display:flex; align-items:center; gap:8px;">
+            <div class="panel-header queue-header-top">
+              <div class="queue-title-wrapper">
+                <h3><i class="fa-solid fa-list-music"></i> Upcoming Recommendations Queue</h3>
                 <span class="badge-tag" id="queue-model-badge">RL Ranked</span>
-                <button class="btn-small" id="btn-refresh-recs"><i class="fa-solid fa-arrows-rotate"></i> Re-Rank</button>
+              </div>
+              <div class="queue-header-actions">
+                <button class="btn-small" id="btn-quick-add-queue" title="Search Library & Add Songs to Queue">
+                  <i class="fa-solid fa-plus"></i> Add Song
+                </button>
+                <button class="btn-small" id="btn-shuffle-queue" title="Shuffle Queue">
+                  <i class="fa-solid fa-shuffle"></i>
+                </button>
+                <button class="btn-small" id="btn-refresh-recs" title="Re-Rank with RL Policy">
+                  <i class="fa-solid fa-arrows-rotate"></i> Re-Rank
+                </button>
+                <button class="btn-small btn-danger-subtle" id="btn-clear-queue" title="Clear Queue">
+                  <i class="fa-solid fa-trash-can"></i>
+                </button>
               </div>
             </div>
+
+            <!-- Queue Search & Filter Controls -->
+            <div class="queue-controls-bar">
+              <div class="queue-search-wrapper">
+                <i class="fa-solid fa-magnifying-glass queue-search-icon"></i>
+                <input type="text" id="queue-search-input" class="queue-search-input" placeholder="Search queue by title, artist, or tag... (/)" autocomplete="off">
+                <button class="queue-search-clear-btn" id="btn-queue-search-clear" style="display: none;" title="Clear search">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+                <span class="queue-match-count" id="queue-filter-count">0 tracks</span>
+              </div>
+
+              <!-- Filter category chips -->
+              <div class="queue-filter-pills" id="queue-filter-pills">
+                <button class="queue-pill active" data-filter="all">All</button>
+                <button class="queue-pill" data-filter="top_q"><i class="fa-solid fa-trophy"></i> Top Q-Val</button>
+                <button class="queue-pill" data-filter="energy"><i class="fa-solid fa-bolt"></i> Energy</button>
+                <button class="queue-pill" data-filter="chill"><i class="fa-solid fa-wind"></i> Chill</button>
+                <button class="queue-pill" data-filter="mood"><i class="fa-solid fa-face-smile"></i> Mood</button>
+                <button class="queue-pill" data-filter="discovery"><i class="fa-solid fa-compass"></i> Explore</button>
+              </div>
+            </div>
+
+            <!-- Quick Add Song Flyout Modal / Drawer -->
+            <div class="quick-add-panel" id="quick-add-panel" style="display: none;">
+              <div class="quick-add-header">
+                <div class="quick-add-title"><i class="fa-solid fa-cloud-arrow-down"></i> Add Song to Recommendation Queue</div>
+                <button class="btn-icon-small" id="btn-close-quick-add" title="Close"><i class="fa-solid fa-xmark"></i></button>
+              </div>
+              <div class="quick-add-search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="quick-add-search-input" placeholder="Type artist or song name from catalog..." autocomplete="off">
+              </div>
+              <div class="quick-add-results" id="quick-add-results">
+                <div class="quick-add-prompt">Type 2 or more characters to search songs...</div>
+              </div>
+            </div>
+
+            <!-- Queue Tracks List Container -->
             <div class="queue-list" id="queue-list-container">
               <!-- Dynamically populated with artwork -->
             </div>
 
-            <div class="session-history-box">
-              <h4><i class="fa-solid fa-clock-rotate-left"></i> Session Trajectory Log</h4>
+            <!-- Session Trajectory Log -->
+            <div class="session-history-box" id="session-history-box">
+              <div class="session-history-header">
+                <div class="history-title-group">
+                  <h4><i class="fa-solid fa-clock-rotate-left"></i> Session Trajectory Log</h4>
+                  <span class="trajectory-reward-pill" id="trajectory-cum-reward">+0.00 R</span>
+                </div>
+                <div class="history-actions-group">
+                  <span class="trajectory-stats-summary" id="trajectory-stats-summary">0 interactions</span>
+                  <button class="btn-icon-small" id="btn-clear-trajectory" title="Clear Trajectory Log">
+                    <i class="fa-solid fa-trash-can"></i>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Trajectory Filter Chips -->
+              <div class="trajectory-filter-pills" id="trajectory-filter-pills">
+                <button class="traj-pill active" data-filter="all">All</button>
+                <button class="traj-pill" data-filter="liked"><i class="fa-solid fa-heart"></i> Liked</button>
+                <button class="traj-pill" data-filter="skip"><i class="fa-solid fa-forward-step"></i> Skipped</button>
+                <button class="traj-pill" data-filter="listened"><i class="fa-solid fa-check"></i> Listened</button>
+                <button class="traj-pill" data-filter="disliked"><i class="fa-solid fa-thumbs-down"></i> Disliked</button>
+              </div>
+
               <div class="history-chips" id="history-chips-container">
                 <span class="chip-empty">Session started. Waiting for first interaction...</span>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- User Insights Panel — Real-Time Taste Profile -->
+        <div class="user-insights-glass glass-panel" id="user-insights-panel">
+          <div class="insights-header">
+            <span class="insights-title"><i class="fa-solid fa-chart-simple"></i> Your Taste Profile</span>
+            <span class="insights-context-badge" id="context-badge-insights">🎵 Listening</span>
+          </div>
+          <div class="insights-empty-state">
+            <i class="fa-solid fa-headphones" style="font-size:20px; color:var(--text-muted);"></i>
+            <p style="color:var(--text-secondary); font-size:12px; margin:6px 0 0;">Interact with songs to see your real-time taste profile build here — genre heatmap, mood trajectory, and acoustic centroid will appear as you like, skip, and replay.</p>
           </div>
         </div>
 
@@ -661,6 +743,7 @@
   <script src="js/audio_synth.js"></script>
   <script src="js/rl_visualizer.js"></script>
   <script src="js/benchmark_view.js"></script>
+  <script src="js/behavior_collector.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>

@@ -208,6 +208,114 @@ class OpenSpotClient:
         q = query_map.get(genre, f"Top {genre} Songs")
         return self.search_songs(q, limit=limit)
 
+    def get_recommendations_for_profile(
+        self,
+        liked_genres: List[str],
+        liked_artists: List[str],
+        context_type: str = "afternoon_energy",
+        limit_per_query: int = 8,
+    ) -> List[Dict[str, Any]]:
+        """
+        Generates fresh OpenSpot candidates tailored to a user's behavior profile.
+
+        Runs parallel searches for:
+        - Top 3 liked genres (via genre chart queries)
+        - Top 3 liked artists (direct artist queries)
+        - Context-based mood queries (e.g., "study lo-fi beats" for night_study)
+
+        Returns a deduplicated pool of tracks, with duplicates removed by raw_id.
+        """
+        context_queries = {
+            "morning_focus":    "morning coffee chill acoustic",
+            "afternoon_energy": "top hits upbeat energetic",
+            "evening_chill":    "evening relaxing mellow",
+            "night_study":      "lofi hip hop study beats",
+            "workout":          "workout gym high energy",
+            "travel":           "road trip feel good",
+        }
+
+        queries: List[str] = []
+
+        # Genre queries
+        genre_query_map = {
+            "Pop": "Top Pop Hits",
+            "Hip-Hop": "Top Hip Hop Hits",
+            "EDM / Electronic": "EDM Top Hits",
+            "Rock": "Classic Rock Hits",
+            "R&B / Soul": "R&B Hits",
+            "Lo-Fi / Chillhop": "Lofi Chill Beats",
+            "Jazz": "Jazz Classics",
+            "Classical": "Best Classical Masterpieces",
+            "Indie / Alternative": "Indie Alternative Hits",
+            "Metal": "Heavy Metal Hits",
+            "Acoustic / Folk": "Acoustic Hits",
+            "Synthwave": "Synthwave Retrowave Hits"
+        }
+        for genre in liked_genres[:3]:
+            queries.append(genre_query_map.get(genre, f"Top {genre} Songs"))
+
+        # Artist queries
+        for artist in liked_artists[:3]:
+            queries.append(artist)
+
+        # Context query
+        ctx_q = context_queries.get(context_type)
+        if ctx_q:
+            queries.append(ctx_q)
+
+        seen_ids: set = set()
+        results: List[Dict[str, Any]] = []
+
+        for q in queries:
+            try:
+                tracks = self.search_songs(q, limit=limit_per_query)
+                for t in tracks:
+                    raw_id = t.get("raw_id", t.get("song_id", ""))
+                    if raw_id and raw_id not in seen_ids:
+                        seen_ids.add(raw_id)
+                        results.append(t)
+            except Exception as e:
+                logger.warning(f"OpenSpot profile query failed for '{q}': {e}")
+
+        return results
+
+    def get_similar_to_song(
+        self,
+        title: str,
+        artist: str,
+        genre: str,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
+        """
+        Finds OpenSpot songs acoustically/contextually similar to a seed track.
+        Searches for the artist, then genre hits as a fallback.
+        """
+        results = []
+        seen_ids: set = set()
+
+        # 1. Artist-based similarity
+        artist_tracks = self.search_songs(artist, limit=limit)
+        for t in artist_tracks:
+            rid = t.get("raw_id", t.get("song_id", ""))
+            if rid and rid not in seen_ids and t.get("title", "").lower() != title.lower():
+                seen_ids.add(rid)
+                results.append(t)
+
+        # 2. Genre-based similarity
+        if len(results) < limit:
+            genre_query = {
+                "Pop": "Top Pop Hits", "Hip-Hop": "Top Hip Hop Hits",
+                "Lo-Fi / Chillhop": "Lofi Chill Beats", "Jazz": "Jazz Classics",
+            }.get(genre, f"Top {genre} Songs")
+            genre_tracks = self.search_songs(genre_query, limit=limit)
+            for t in genre_tracks:
+                rid = t.get("raw_id", t.get("song_id", ""))
+                if rid and rid not in seen_ids:
+                    seen_ids.add(rid)
+                    results.append(t)
+
+        return results[:limit]
+
     def _parse_song_item(self, item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Transforms raw JioSaavn JSON item into standard OpenSpot/SoundSpace track format."""
         if not item:
@@ -270,7 +378,6 @@ class OpenSpotClient:
             "language": more_info.get("language", "english"),
             "year": more_info.get("year", "2024"),
             "has_lyrics": more_info.get("has_lyrics") == "true",
-            "spotify_url": f"https://open.spotify.com/search/{urllib.parse.quote(f'{title} {artists}')}",
             **acoustic
         }
 

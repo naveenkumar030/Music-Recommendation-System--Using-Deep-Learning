@@ -6,7 +6,10 @@ Provides REST endpoints for:
 - /api/songs: song catalog query and audio feature lookup.
 - /api/users: synthetic persona and user profile list.
 - /api/recommend: next-track or 10-track slate recommendation (Two-Tower -> Wolpertinger RL -> Business Rules).
-- /api/feedback: online feedback ingestion and session state update.
+- /api/recommend/hybrid: Full hybrid pipeline (Content-Based + Collaborative + Context + Diversity + Exploration).
+- /api/feedback: online feedback ingestion and behavior signal logging.
+- /api/behavior/log: Granular user behavior event logging (listen_ms, replay, search_click, playlist_save).
+- /api/behavior/profile/{user_id}: Serialized behavior profile with genre heatmap, acoustic centroid, mood.
 - /api/simulate: live multi-session A/B simulation comparing models.
 - /api/metrics: offline eval report and guardrails.
 """
@@ -28,10 +31,12 @@ from pydantic import BaseModel, Field
 from src.data.feature_store import FeatureStore
 from src.data.openspot_client import openspot_client
 from src.data.lyrics_service import lyrics_service
+from src.data.behavior_store import behavior_store, BehaviorStore
 from src.env.response_model import UserResponseModel
 from src.env.music_env import SongRecEnv, PlaybackEvent, compute_reward
 from src.models.retrieval import TwoTowerModel, VectorIndex
 from src.models.actor_critic import WolpertingerAgent
+from src.models.hybrid_ranker import hybrid_ranker, infer_context_from_hour, get_context_profile
 
 app = FastAPI(
     title="RL Song Recommender API",
@@ -76,7 +81,9 @@ STATE: Dict[str, Any] = {
     "rl_agent": None,
     "response_model": None,
     "env": None,
-    "active_sessions": {}
+    "active_sessions": {},
+    "behavior_store": behavior_store,   # Singleton — shared across all requests
+    "hybrid_ranker": hybrid_ranker,     # Singleton — weighted scoring / LightGBM
 }
 
 
@@ -89,11 +96,45 @@ class RecommendRequest(BaseModel):
     slate_size: int = Field(default=1)               # 1 for next-track, k for slate
 
 
+class HybridRecommendRequest(BaseModel):
+    """Request body for the hybrid recommendation pipeline."""
+    user_id: str = Field(default="usr_00001")
+    history_song_ids: List[str] = Field(default_factory=list)
+    history_skip_types: List[str] = Field(default_factory=list)
+    history_likes: List[int] = Field(default_factory=list)
+    slate_size: int = Field(default=10)
+    context_type: Optional[str] = None             # auto-inferred if None
+    listen_history_ms: Dict[str, int] = Field(default_factory=dict)  # {song_id: ms_listened}
+    replay_song_ids: List[str] = Field(default_factory=list)
+    search_history: List[str] = Field(default_factory=list)
+    pull_openspot: bool = Field(default=True)       # whether to fetch fresh OpenSpot candidates
+    explore_slots: int = Field(default=2)           # forced exploration picks
+    diversity_window: int = Field(default=3)        # same-genre window for diversity
+
+
+class BehaviorLogRequest(BaseModel):
+    """Granular user behavior event payload."""
+    user_id: str
+    song_id: str
+    event_type: str   # liked|disliked|no_skip|skip_early|skip_late|replay|playlist_save|search_click|listen_end
+    title: str = ""
+    artist_name: str = ""
+    genre: str = "Pop"
+    listen_ms: int = 0
+    duration_ms: int = 210000
+    energy: float = 0.65
+    valence: float = 0.60
+    danceability: float = 0.60
+    tempo: float = 120.0
+    search_query: Optional[str] = None
+
+
 class FeedbackRequest(BaseModel):
     session_id: str
     user_id: str
     song_id: str
     action_type: str  # 'no_skip', 'skip_early', 'skip_late', 'liked', 'disliked', 'saved'
+    listen_ms: int = 0
 
 
 class SimulateRequest(BaseModel):
@@ -673,6 +714,7 @@ def recommend_track(req: RecommendRequest):
 @app.post("/api/feedback")
 def process_feedback(req: FeedbackRequest):
     fs: FeatureStore = STATE["feature_store"]
+    bs: BehaviorStore = STATE["behavior_store"]
     song_meta = fs.get_song_metadata(req.song_id)
 
     # Map action_type to skip_type — disliked counts as skip_early for reward computation
@@ -690,7 +732,7 @@ def process_feedback(req: FeedbackRequest):
         genre=song_meta["genre"],
         skip_type=skip_type,
         liked=1 if req.action_type == "liked" else 0,
-        saved_to_playlist=1 if req.action_type == "saved" else 0
+        saved_to_playlist=1 if req.action_type in ("saved", "playlist_save") else 0
     )
     r = compute_reward(ev, [])
 
@@ -698,11 +740,235 @@ def process_feedback(req: FeedbackRequest):
     if req.action_type == "disliked":
         r -= 1.0  # Extra -1.0 on top of skip_early penalty
 
+    # Log to BehaviorStore for hybrid recommendation signals
+    bs.record_event(
+        user_id=req.user_id,
+        song_id=req.song_id,
+        event_type=req.action_type if req.action_type != "saved" else "playlist_save",
+        title=song_meta.get("title", ""),
+        artist_name=song_meta.get("artist_name", ""),
+        genre=song_meta.get("genre", "Pop"),
+        listen_ms=req.listen_ms,
+        duration_ms=song_meta.get("duration_ms", 210000),
+        energy=float(song_meta.get("energy", 0.65)),
+        valence=float(song_meta.get("valence", 0.60)),
+        danceability=float(song_meta.get("danceability", 0.60)),
+        tempo=float(song_meta.get("tempo", 120.0)),
+    )
+
     return {
         "status": "success",
         "song_id": req.song_id,
         "action_type": req.action_type,
         "reward": round(r, 2)
+    }
+
+
+@app.post("/api/behavior/log")
+def log_behavior_event(req: BehaviorLogRequest):
+    """
+    Logs a granular user behavior event to the BehaviorStore.
+    Called by the frontend for: listen_end (with actual ms), replay, search_click, playlist_save.
+    """
+    bs: BehaviorStore = STATE["behavior_store"]
+    bs.record_event(
+        user_id=req.user_id,
+        song_id=req.song_id,
+        event_type=req.event_type,
+        title=req.title,
+        artist_name=req.artist_name,
+        genre=req.genre,
+        listen_ms=req.listen_ms,
+        duration_ms=req.duration_ms,
+        energy=req.energy,
+        valence=req.valence,
+        danceability=req.danceability,
+        tempo=req.tempo,
+        search_query=req.search_query,
+    )
+    return {"status": "ok", "user_id": req.user_id, "event_type": req.event_type}
+
+
+@app.get("/api/behavior/profile/{user_id}")
+def get_behavior_profile(user_id: str):
+    """
+    Returns a serialized snapshot of the user's real-time behavior profile.
+    Used by the frontend to render User Insights panel.
+    """
+    bs: BehaviorStore = STATE["behavior_store"]
+    profile = bs.get_full_profile_dict(user_id)
+
+    # Add context info
+    ctx_type  = infer_context_from_hour()
+    ctx_info  = get_context_profile(ctx_type)
+    profile["current_context"] = {"type": ctx_type, **ctx_info}
+    return profile
+
+
+@app.post("/api/recommend/hybrid")
+def hybrid_recommend(req: HybridRecommendRequest):
+    """
+    Full Hybrid Recommendation Pipeline:
+
+    1. Two-Tower candidate generation (top-100 from vector index)
+    2. OpenSpot fresh candidate injection (based on liked genres/artists)
+    3. Behavior signal extraction from BehaviorStore
+    4. HybridRanker scoring (content + collaborative + context + diversity + exploration)
+    5. Returns enriched slate with reason chips, categories, and context info
+    """
+    t0 = time.perf_counter()
+    fs: FeatureStore = STATE["feature_store"]
+    retrieval_model: TwoTowerModel = STATE["retrieval_model"]
+    v_index: VectorIndex = STATE["vector_index"]
+    bs: BehaviorStore = STATE["behavior_store"]
+    ranker = STATE["hybrid_ranker"]
+
+    if not fs:
+        raise HTTPException(status_code=503, detail="Feature store not initialized.")
+
+    # Fallback user
+    if req.user_id not in fs.user_id_to_idx:
+        req.user_id = fs.idx_to_user_id[0]
+
+    # ── Step 1: Two-Tower candidate generation ────────────────────────────────
+    u_vec = fs.get_user_vector_by_id(req.user_id)
+    ann_candidates = []
+
+    if retrieval_model and v_index:
+        with torch.no_grad():
+            u_tensor = torch.tensor(u_vec, dtype=torch.float32).unsqueeze(0)
+            u_emb    = retrieval_model.user_tower(u_tensor).squeeze(0).cpu().numpy()
+        top_ids, top_scores, _ = v_index.query(u_emb, top_k=120)
+        for sid, score in zip(top_ids, top_scores):
+            ann_candidates.append({"song_meta": fs.get_song_metadata(sid), "content_sim": float(score)})
+    else:
+        # Fallback: random sample from catalog
+        sample_ids = list(fs.song_id_to_idx.keys())[:120]
+        ann_candidates = [{"song_meta": fs.get_song_metadata(sid), "content_sim": 0.5} for sid in sample_ids]
+
+    # ── Step 2: Log incoming listen_history_ms to BehaviorStore ──────────────
+    for sid, ms in req.listen_history_ms.items():
+        if ms > 5000 and sid in fs.song_id_to_idx:  # Only meaningful listen time (>5s)
+            meta = fs.get_song_metadata(sid)
+            bs.record_event(
+                user_id=req.user_id, song_id=sid, event_type="listen_end",
+                title=meta.get("title", ""), artist_name=meta.get("artist_name", ""),
+                genre=meta.get("genre", "Pop"), listen_ms=ms,
+                duration_ms=meta.get("duration_ms", 210000),
+                energy=float(meta.get("energy", 0.65)),
+                valence=float(meta.get("valence", 0.60)),
+                danceability=float(meta.get("danceability", 0.60)),
+                tempo=float(meta.get("tempo", 120.0)),
+            )
+
+    # Log replay events
+    for sid in req.replay_song_ids:
+        if sid in fs.song_id_to_idx:
+            meta = fs.get_song_metadata(sid)
+            bs.record_event(
+                user_id=req.user_id, song_id=sid, event_type="replay",
+                title=meta.get("title", ""), artist_name=meta.get("artist_name", ""),
+                genre=meta.get("genre", "Pop"), listen_ms=0,
+                duration_ms=meta.get("duration_ms", 210000),
+                energy=float(meta.get("energy", 0.65)),
+                valence=float(meta.get("valence", 0.60)),
+                danceability=float(meta.get("danceability", 0.60)),
+                tempo=float(meta.get("tempo", 120.0)),
+            )
+
+    # ── Step 3: OpenSpot fresh candidate injection ────────────────────────────
+    openspot_candidates = []
+    if req.pull_openspot:
+        liked_genres  = bs.get_top_liked_genres(req.user_id, n=3)
+        liked_artists = bs.get_top_liked_artists(req.user_id, n=3)
+        ctx_type = req.context_type or infer_context_from_hour()
+
+        # Fallback to user profile genre affinities if no behavior yet
+        if not liked_genres:
+            try:
+                u_row = fs.users_df[fs.users_df["user_id"] == req.user_id].iloc[0]
+                ga = u_row["genre_affinities"]
+                if isinstance(ga, str):
+                    import json as _json
+                    ga = _json.loads(ga)
+                liked_genres = [k for k, _ in sorted(ga.items(), key=lambda x: x[1], reverse=True)][:3]
+            except Exception:
+                liked_genres = ["Pop"]
+
+        try:
+            raw_tracks = openspot_client.get_recommendations_for_profile(
+                liked_genres=liked_genres,
+                liked_artists=liked_artists,
+                context_type=ctx_type,
+                limit_per_query=6,
+            )
+            for t in raw_tracks[:40]:
+                sid = t.get("song_id", "")
+                if sid and sid not in fs.song_id_to_idx:
+                    # Auto-import into feature store
+                    fs.add_song(t)
+                    if retrieval_model and v_index:
+                        try:
+                            s_vec = fs.get_song_vector_by_id(sid)
+                            with torch.no_grad():
+                                s_t   = torch.tensor(s_vec, dtype=torch.float32).unsqueeze(0)
+                                s_emb = retrieval_model.song_tower(s_t).squeeze(0).cpu().numpy()
+                            v_index.add_item(sid, s_emb)
+                        except Exception:
+                            pass
+
+                meta = fs.get_song_metadata(sid) if sid in fs.song_id_to_idx else t
+                openspot_candidates.append({"song_meta": meta, "content_sim": 0.55})
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"OpenSpot profile fetch failed: {e}")
+
+    # ── Step 4: Merge and deduplicate candidates ──────────────────────────────
+    all_candidates = ann_candidates + openspot_candidates
+    seen_cand_ids: set = set()
+    merged_candidates = []
+    for c in all_candidates:
+        sid = c["song_meta"].get("song_id", "")
+        if sid and sid not in seen_cand_ids:
+            seen_cand_ids.add(sid)
+            merged_candidates.append(c)
+
+    # ── Step 5: Hybrid ranking ────────────────────────────────────────────────
+    all_genres = sorted(set(fs.songs_df["genre"].dropna().tolist()))
+    ranked = ranker.rank(
+        candidates=merged_candidates,
+        user_id=req.user_id,
+        behavior_store=bs,
+        context_type=req.context_type,
+        all_genres=all_genres,
+        explore_slots=req.explore_slots,
+        diversity_window=req.diversity_window,
+        excluded_song_ids=req.history_song_ids[-5:] if req.history_song_ids else [],
+    )
+
+    # ── Step 6: Trim to requested slate size ─────────────────────────────────
+    ranked = ranked[:max(req.slate_size, 1)]
+
+    # ── Build category summary ────────────────────────────────────────────────
+    categories: Dict[str, List] = {}
+    for s in ranked:
+        cat = s.get("rec_category", "rl_pick")
+        categories.setdefault(cat, []).append(s)
+
+    ctx_type_final = req.context_type or infer_context_from_hour()
+    ctx_info = get_context_profile(ctx_type_final)
+
+    total_latency_ms = (time.perf_counter() - t0) * 1000.0
+    return {
+        "user_id":         req.user_id,
+        "context_type":    ctx_type_final,
+        "context_label":   ctx_info.get("label", ""),
+        "context_emoji":   ctx_info.get("emoji", "🎵"),
+        "recommendations": ranked,
+        "categories":      {k: len(v) for k, v in categories.items()},
+        "openspot_injected": len(openspot_candidates),
+        "total_candidates":  len(merged_candidates),
+        "latency_ms":        round(total_latency_ms, 2),
     }
 
 
