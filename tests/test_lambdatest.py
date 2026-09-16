@@ -42,8 +42,8 @@ def remote_driver():
 
 def test_lambdatest_cloud_execution(remote_driver):
     """Test remote execution on LambdaTest Selenium Hub."""
-    remote_driver.get("https://httpbin.org/html")
-    assert remote_driver.title != ""
+    remote_driver.get("https://example.com")
+    assert "Example" in remote_driver.title
     h1 = remote_driver.find_element(By.TAG_NAME, "h1")
     assert h1.text != ""
     remote_driver.execute_script("lambda-status=passed")

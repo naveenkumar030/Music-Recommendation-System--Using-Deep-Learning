@@ -35,13 +35,13 @@ def test_gymnasium_check_env(env_setup):
 
 
 def test_reward_bounds():
-    # 1. Best possible event: no skip (+1.0), liked (+2.0), saved (+1.5), novelty (+0.1) -> +4.6
+    # 1. Best possible event: no skip (+0.5), liked (+1.0), saved (+0.5), novelty (+0.1) -> +2.1
     best_event = PlaybackEvent(
         song_id="s1", artist="ArtistA", genre="Jazz",
         skip_type="no_skip", liked=1, saved_to_playlist=1
     )
     r_best = compute_reward(best_event, [])
-    assert r_best == pytest.approx(4.6, rel=1e-3)
+    assert r_best == pytest.approx(2.1, rel=1e-3)
 
     # 2. Worst possible event: early skip (-1.0), repeated artist (-0.3) -> -1.3
     prev_event = PlaybackEvent(

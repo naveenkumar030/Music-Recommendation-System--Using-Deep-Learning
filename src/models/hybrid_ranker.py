@@ -99,10 +99,14 @@ def build_candidate_features(
     liked_song_ids: List[str],
     skipped_song_ids: List[str],
     all_genres: List[str],
+    profile_genre_prior: Optional[Dict[str, float]] = None,
 ) -> Dict[str, float]:
     """
     Builds the full feature vector for one (user, candidate song) pair.
     Returns a dict of named scores (useful for explainability).
+
+    When user_genre_weights is empty (cold start), blends in profile_genre_prior
+    so the ranker has a meaningful prior instead of scoring every genre at 0.
     """
     genre = song_meta.get("genre", "Pop")
     artist = song_meta.get("artist_name", "")
@@ -112,7 +116,11 @@ def build_candidate_features(
     f_content = float(np.clip(content_sim_score, -1.0, 1.0))
 
     # ── Genre affinity (collaborative signal) ─────────────────────────────────
-    f_genre_affinity = user_genre_weights.get(genre, 0.0)
+    # Cold-start: if live weights are empty, blend in the persisted profile prior
+    effective_genre_weights = user_genre_weights
+    if not user_genre_weights and profile_genre_prior:
+        effective_genre_weights = profile_genre_prior  # raw profile affinities (0–1 scale)
+    f_genre_affinity = float(effective_genre_weights.get(genre, 0.0))
 
     # ── Artist affinity (collaborative signal) ────────────────────────────────
     f_artist_affinity = user_artist_weights.get(artist, 0.0)
@@ -169,19 +177,19 @@ def build_candidate_features(
 
 # ─── Weighted Scoring ─────────────────────────────────────────────────────────
 
-# Weight vector — tuned for good balance
+# Weight vector — tuned for optimal balance of content relevance, user affinity, and calibrated exploration
 WEIGHTS = {
-    "content_sim":       0.30,
-    "genre_affinity":    0.20,
-    "artist_affinity":   0.12,
+    "content_sim":       0.35,
+    "genre_affinity":    0.25,
+    "artist_affinity":   0.15,
     "acoustic_match":    0.15,
     "context_boost":     0.10,
     "popularity":        0.05,
-    "diversity_penalty": -1.0,   # Applied as deduction
-    "exploration_bonus": 1.0,    # Applied as addition
-    "replay_bonus":      1.0,
-    "liked_bonus":       1.0,
-    "skip_penalty":      -1.0,   # Applied as deduction
+    "diversity_penalty": -0.30,   # Scaled penalty for repeats
+    "exploration_bonus": 0.20,    # Controlled discovery boost
+    "replay_bonus":      0.35,    # Strong affinity for replayed tracks
+    "liked_bonus":       0.40,    # High priority for liked-similar tracks
+    "skip_penalty":      -0.80,   # Strong deduction for skipped tracks
 }
 
 
@@ -268,6 +276,7 @@ class HybridRanker:
         explore_slots: int = 2,
         diversity_window: int = 3,
         excluded_song_ids: Optional[List[str]] = None,
+        profile_genre_prior: Optional[Dict[str, float]] = None,
     ) -> List[Dict]:
         """
         Ranks candidate songs and returns an enriched list with scores and reasons.
@@ -281,6 +290,8 @@ class HybridRanker:
             explore_slots: How many exploration picks to force into the final slate
             diversity_window: Number of recent picks to track for same-genre penalty
             excluded_song_ids: Song IDs to exclude (e.g. currently playing)
+            profile_genre_prior: Persisted genre affinity dict from user profile.
+                Used as cold-start prior when behavior_store has no events yet.
 
         Returns:
             Ranked list of enriched song dicts with 'rec_score', 'rec_reason', 'rec_category'
@@ -327,6 +338,7 @@ class HybridRanker:
                 liked_song_ids=liked_ids,
                 skipped_song_ids=list(skipped_ids),
                 all_genres=all_genres,
+                profile_genre_prior=profile_genre_prior,
             )
 
             if self._lgbm_model is not None:

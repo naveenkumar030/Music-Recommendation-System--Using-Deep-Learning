@@ -52,8 +52,36 @@ class App {
     this.sessionTrajectoryHistory = [];
     this.trajectoryFilter = 'all';
 
+    // Custom Playlists State
+    const savedPl = localStorage.getItem('soundspace_custom_playlists');
+    if (savedPl) {
+      try {
+        this.customPlaylists = JSON.parse(savedPl);
+      } catch (e) {
+        this.customPlaylists = [];
+      }
+    } else {
+      this.customPlaylists = [
+        {
+          id: 'pl_lofi_study',
+          name: 'Chill Study Beats',
+          desc: 'Relaxing lo-fi hip hop and jazz beats for focus',
+          tracks: []
+        },
+        {
+          id: 'pl_workout_hype',
+          name: 'Workout Energy 2026',
+          desc: 'High BPM electronic and hip hop bangers',
+          tracks: []
+        }
+      ];
+      localStorage.setItem('soundspace_custom_playlists', JSON.stringify(this.customPlaylists));
+    }
+    this.pendingTrackForPlaylist = null;
+
     this.initEventListeners();
     this.loadInitialData();
+    this.renderCustomPlaylists();
     this._initBehaviorCollector();
   }
 
@@ -109,12 +137,12 @@ class App {
     const btnSave = document.getElementById('btn-playlist-save');
     if (btnSave) {
       btnSave.addEventListener('click', () => {
-        if (this.currentTrack && window.behaviorCollector) {
-          window.behaviorCollector.onPlaylistSave(this.currentTrack);
+        if (this.currentTrack) {
+          if (window.behaviorCollector) window.behaviorCollector.onPlaylistSave(this.currentTrack);
           this.handleFeedback('saved', 1.5);
           btnSave.classList.add('saved');
           setTimeout(() => btnSave.classList.remove('saved'), 2000);
-          this.showToast(`💾 "${this.currentTrack.title}" saved to playlist!`);
+          this.openAddToPlaylistModal(this.currentTrack);
         }
       });
     }
@@ -137,18 +165,190 @@ class App {
       });
     }
 
+    // Global Spotify Top Bar Search
+    const globalSearch = document.getElementById('global-search-input');
+    if (globalSearch) {
+      globalSearch.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          const q = globalSearch.value.trim();
+          if (q) {
+            this.switchTab('openspot-tab');
+            const openInput = document.getElementById('openspot-search-input');
+            if (openInput) openInput.value = q;
+            this.searchOpenSpot(q);
+          }
+        }
+      });
+      globalSearch.addEventListener('input', (e) => {
+        clearTimeout(this.searchDebounceTimer);
+        const q = e.target.value.trim();
+        if (q.length >= 3) {
+          this.searchDebounceTimer = setTimeout(() => {
+            this.switchTab('openspot-tab');
+            const openInput = document.getElementById('openspot-search-input');
+            if (openInput) openInput.value = q;
+            this.searchOpenSpot(q);
+          }, 500);
+        }
+      });
+    }
+
+    // History Back / Forward navigation buttons
+    const btnNavBack = document.getElementById('btn-nav-back');
+    const btnNavFwd = document.getElementById('btn-nav-forward');
+    if (btnNavBack) btnNavBack.addEventListener('click', () => this.switchTab('home-tab'));
+    if (btnNavFwd) btnNavFwd.addEventListener('click', () => this.switchTab('player-tab'));
+
+    // Persistent Spotify Player Bar Controls
+    const spPlay = document.getElementById('sp-btn-play');
+    const spPrev = document.getElementById('sp-btn-prev');
+    const spNext = document.getElementById('sp-btn-next');
+    const spShuffle = document.getElementById('sp-btn-shuffle');
+    const spLike = document.getElementById('sp-btn-like');
+    const spSave = document.getElementById('sp-btn-save');
+    const spScrubber = document.getElementById('sp-audio-scrubber');
+    const spVolSlider = document.getElementById('sp-volume-slider');
+    const spVolIcon = document.getElementById('sp-btn-volume-icon');
+    const spLyricsToggle = document.getElementById('sp-btn-lyrics-toggle');
+    const spQueueToggle = document.getElementById('sp-btn-queue-toggle');
+    const spTheater = document.getElementById('sp-btn-theater');
+
+    if (spPlay) {
+      spPlay.addEventListener('click', () => {
+        if (this.currentTrack) window.audioSynth.toggle(this.currentTrack);
+      });
+    }
+    if (spPrev) {
+      spPrev.addEventListener('click', () => {
+        window.audioSynth.seek(0);
+        this.showToast('⏮ Replaying track from start');
+      });
+    }
+    if (spNext) {
+      spNext.addEventListener('click', () => this.handleFeedback('skip_early', -1.0));
+    }
+    if (spShuffle) {
+      spShuffle.addEventListener('click', () => {
+        this.currentModelType = this.currentModelType === 'wolpertinger' ? 'baseline' : 'wolpertinger';
+        spShuffle.classList.toggle('active', this.currentModelType === 'wolpertinger');
+        this.showToast(this.currentModelType === 'wolpertinger' ? '⚡ RL Smart Shuffle Enabled' : '📻 Two-Tower Baseline Mode');
+        this.fetchNextRecommendation();
+      });
+    }
+    if (spLike) {
+      spLike.addEventListener('click', () => {
+        this.handleFeedback('liked', 1.0);
+        spLike.classList.add('liked');
+        setTimeout(() => spLike.classList.remove('liked'), 2500);
+      });
+    }
+    if (spSave) {
+      spSave.addEventListener('click', () => {
+        if (this.currentTrack) {
+          this.openAddToPlaylistModal(this.currentTrack);
+        }
+      });
+    }
+
+    // Modal Listeners for Playlist Management
+    const btnCreatePl = document.getElementById('btn-create-playlist');
+    const btnCloseCreatePl = document.getElementById('btn-close-create-playlist');
+    const btnCancelCreatePl = document.getElementById('btn-cancel-create-playlist');
+    const btnSubmitCreatePl = document.getElementById('btn-submit-create-playlist');
+
+    if (btnCreatePl) btnCreatePl.addEventListener('click', () => this.openCreatePlaylistModal());
+    if (btnCloseCreatePl) btnCloseCreatePl.addEventListener('click', () => this.closeCreatePlaylistModal());
+    if (btnCancelCreatePl) btnCancelCreatePl.addEventListener('click', () => this.closeCreatePlaylistModal());
+    if (btnSubmitCreatePl) btnSubmitCreatePl.addEventListener('click', () => this.submitCreatePlaylist());
+
+    const btnCloseAddPl = document.getElementById('btn-close-add-playlist');
+    const btnCancelAddPl = document.getElementById('btn-cancel-add-playlist');
+    const btnOpenCreateFromAdd = document.getElementById('btn-open-create-from-add');
+
+    if (btnCloseAddPl) btnCloseAddPl.addEventListener('click', () => this.closeAddToPlaylistModal());
+    if (btnCancelAddPl) btnCancelAddPl.addEventListener('click', () => this.closeAddToPlaylistModal());
+    if (btnOpenCreateFromAdd) {
+      btnOpenCreateFromAdd.addEventListener('click', () => {
+        this.closeAddToPlaylistModal();
+        this.openCreatePlaylistModal();
+      });
+    }
+    if (spScrubber) {
+      spScrubber.addEventListener('input', (e) => {
+        window.audioSynth.seek(parseFloat(e.target.value));
+      });
+    }
+    if (spVolSlider) {
+      spVolSlider.addEventListener('input', (e) => {
+        const v = parseFloat(e.target.value) / 100;
+        window.audioSynth.setVolume(v);
+        if (spVolIcon) {
+          spVolIcon.innerHTML = v === 0 ? '<i class="fa-solid fa-volume-xmark"></i>' : (v < 0.4 ? '<i class="fa-solid fa-volume-low"></i>' : '<i class="fa-solid fa-volume-high"></i>');
+        }
+      });
+    }
+    if (spVolIcon) {
+      spVolIcon.addEventListener('click', () => {
+        const cur = window.audioSynth.gainNode ? window.audioSynth.gainNode.gain.value : 1;
+        const newV = cur > 0 ? 0 : 0.8;
+        window.audioSynth.setVolume(newV);
+        if (spVolSlider) spVolSlider.value = newV * 100;
+        spVolIcon.innerHTML = newV === 0 ? '<i class="fa-solid fa-volume-xmark"></i>' : '<i class="fa-solid fa-volume-high"></i>';
+      });
+    }
+    if (spLyricsToggle) {
+      spLyricsToggle.addEventListener('click', () => {
+        this.switchTab('player-tab');
+        const lyricsCard = document.getElementById('player-lyrics-card');
+        if (lyricsCard && lyricsCard.classList.contains('collapsed')) {
+          lyricsCard.classList.remove('collapsed');
+        }
+      });
+    }
+    if (spQueueToggle) {
+      spQueueToggle.addEventListener('click', () => {
+        this.switchTab('player-tab');
+        const qContainer = document.getElementById('queue-list-container');
+        if (qContainer) qContainer.scrollIntoView({ behavior: 'smooth' });
+      });
+    }
+    if (spTheater) {
+      spTheater.addEventListener('click', () => this.toggleTheaterMode(true));
+    }
+
+    // Library Action Buttons
+    const btnLibPlayAll = document.getElementById('btn-lib-play-all');
+    const btnLibRefresh = document.getElementById('btn-lib-refresh');
+    if (btnLibPlayAll) {
+      btnLibPlayAll.addEventListener('click', () => {
+        const likedTracks = this.sessionTrajectoryHistory.filter(h => h.action === 'liked').map(h => h.track);
+        if (likedTracks.length > 0) {
+          this.playSongDirectly(likedTracks[0].song_id);
+          this.showToast(`▶ Playing Liked Songs playlist (${likedTracks.length} tracks)!`);
+        } else if (this.currentTrack) {
+          this.playSongDirectly(this.currentTrack.song_id);
+        }
+      });
+    }
+    if (btnLibRefresh) {
+      btnLibRefresh.addEventListener('click', () => {
+        this.renderSpotifyLibrary();
+        this.showToast('📚 Library updated!');
+      });
+    }
+
     // Interactive Feedback Action Buttons
     const btnLike = document.getElementById('btn-feedback-like');
-    if (btnLike) btnLike.addEventListener('click', () => this.handleFeedback('liked', 2.5));
+    if (btnLike) btnLike.addEventListener('click', () => this.handleFeedback('liked', 1.0));
 
     const btnFull = document.getElementById('btn-feedback-full');
-    if (btnFull) btnFull.addEventListener('click', () => this.handleFeedback('no_skip', 1.0));
+    if (btnFull) btnFull.addEventListener('click', () => this.handleFeedback('no_skip', 0.5));
 
     const btnSkip = document.getElementById('btn-feedback-skip');
     if (btnSkip) btnSkip.addEventListener('click', () => this.handleFeedback('skip_early', -1.0));
 
     const btnDislike = document.getElementById('btn-feedback-dislike');
-    if (btnDislike) btnDislike.addEventListener('click', () => this.handleFeedback('disliked', -2.0));
+    if (btnDislike) btnDislike.addEventListener('click', () => this.handleFeedback('disliked', -1.5));
 
     const btnRefresh = document.getElementById('btn-refresh-recs');
     if (btnRefresh) {
@@ -433,6 +633,18 @@ class App {
         this.loadOpenSpotCharts(genre);
       });
     });
+
+    // Catalog Tab Genre Pills (Browse All Genres & Moods)
+    document.querySelectorAll('.pill-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const genre = btn.getAttribute('data-genre');
+        const genreSel = document.getElementById('catalog-genre-filter');
+        if (genreSel) genreSel.value = genre;
+        this.loadCatalog();
+      });
+    });
     // Volume Slider
     const volumeSlider = document.getElementById('volume-slider');
     if (volumeSlider) {
@@ -472,6 +684,25 @@ class App {
     await this.updatePersonaDetails(this.currentUserId);
     await this.fetchNextRecommendation();
     await this.loadCatalog();
+    // Sanity check: log total catalog size vs /api/health
+    try {
+      const [healthRes, songsRes] = await Promise.all([
+        fetch('/api/health'),
+        fetch('/api/songs')
+      ]);
+      const health = await healthRes.json();
+      const songsData = await songsRes.json();
+      const catalogSize = health.catalog_size || 0;
+      const totalInResponse = songsData.total || 0;
+      console.log(`[Catalog Sanity] /api/health catalog_size=${catalogSize}, /api/songs total=${totalInResponse}`);
+      if (catalogSize > 0 && totalInResponse !== catalogSize) {
+        console.warn(`[Catalog Sanity] MISMATCH: catalog_size=${catalogSize} but /api/songs total=${totalInResponse}`);
+      } else {
+        console.log('[Catalog Sanity] ✅ Catalog size matches.');
+      }
+    } catch (e) {
+      console.warn('[Catalog Sanity] Could not verify catalog size:', e);
+    }
   }
 
   async updatePersonaDetails(userId) {
@@ -532,6 +763,12 @@ class App {
         body: JSON.stringify(hybridPayload)
       });
 
+      // Throw on non-OK so the catch block triggers the fallback
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail || `Hybrid recommend failed (HTTP ${res.status})`);
+      }
+
       const data = await res.json();
 
       if (data.recommendations && data.recommendations.length > 0) {
@@ -549,10 +786,22 @@ class App {
           if (badge) badge.innerText = data.context_label;
         }
 
+        // Show which pipeline is active
+        const modeTag = document.getElementById('audio-mode-tag');
+        if (modeTag && data.active_pipeline) {
+          const isRL = data.active_pipeline === 'wolpertinger_rl';
+          modeTag.innerHTML = isRL
+            ? '<i class="fa-solid fa-brain"></i> Wolpertinger RL Active'
+            : '<i class="fa-solid fa-tower-cell"></i> Hybrid Heuristic Mode';
+          modeTag.title = isRL
+            ? 'Trained Wolpertinger RL agent is scoring recommendations'
+            : 'Using heuristic hybrid ranker (RL agent not loaded)';
+        }
+
         // Render enriched queue with hybrid reasons
         this.renderQueue(data.recommendations.slice(1), data.q_score_distribution || []);
 
-        if (data.q_score_distribution) {
+        if (data.q_score_distribution && data.q_score_distribution.length > 0) {
           window.rlVisualizer.updateQChart(data.q_score_distribution);
         }
         window.rlVisualizer.updateRadar(this.userProfile, this.currentTrack);
@@ -571,10 +820,31 @@ class App {
 
         // Update user insights panel
         this.loadUserInsights();
+
+        // Update Spotify Home Shelves & Library
+        this.renderSpotifyHomeShelves(data.recommendations, data.q_score_distribution || []);
+        this.renderSpotifyLibrary();
+        this.updateSpotifyPlayerBar();
+
+        // Update interactive RL State loop
+        if (window.rlVisualizer && window.rlVisualizer.updateRLStateLoop) {
+          const topG = this.userProfile?.genre_affinities ? Object.keys(this.userProfile.genre_affinities)[0] : 'Lo-Fi';
+          window.rlVisualizer.updateRLStateLoop(
+            {
+              user_id: this.currentUserId,
+              genre: topG,
+              artist: this.currentTrack.artist_name,
+              mood: { energy: this.currentTrack.energy, valence: this.currentTrack.valence },
+              current_track: this.currentTrack,
+              total_interactions: this.sessionStep
+            },
+            data.q_score_distribution || []
+          );
+        }
       }
     } catch (e) {
       console.error('Hybrid recommendation fetch error:', e);
-      // Fallback to original recommend endpoint
+      // Fallback to original recommend (real RL) endpoint
       try {
         const res = await fetch('/api/recommend', {
           method: 'POST',
@@ -585,21 +855,30 @@ class App {
             history_skip_types: this.historySkipTypes,
             history_likes: this.historyLikes,
             model_type: this.currentModelType,
-            slate_size: 5
+            slate_size: 10
           })
         });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.detail || `RL recommend also failed (HTTP ${res.status})`);
+        }
+
         const data = await res.json();
         if (data.recommendations && data.recommendations.length > 0) {
           this.currentTrack = data.recommendations[0];
           this.renderCurrentTrack(this.currentTrack);
-          this.renderQueue(data.recommendations.slice(1), data.q_score_distribution);
-          if (data.q_score_distribution) window.rlVisualizer.updateQChart(data.q_score_distribution);
+          this.renderQueue(data.recommendations.slice(1), data.q_score_distribution || []);
+          if (data.q_score_distribution && data.q_score_distribution.length > 0) {
+            window.rlVisualizer.updateQChart(data.q_score_distribution);
+          }
           window.rlVisualizer.updateRadar(this.userProfile, this.currentTrack);
           this.loadLyricsForTrack(this.currentTrack);
           this.updateMiniPlayer();
         }
       } catch(e2) {
-        console.error('Fallback recommendation also failed:', e2);
+        console.error('Fallback RL recommendation also failed:', e2);
+        this.showToast(`⚠️ Recommendation engine error: ${e2.message}. Check server logs.`, 'error');
       }
     }
   }
@@ -1136,7 +1415,8 @@ class App {
   }
 
   /**
-   * Searches the catalog for songs to add directly to the queue.
+   * Searches the ENTIRE local catalog for songs to add directly to the queue.
+   * Uses limit=200 so search-to-select covers the full catalog for any reasonable query.
    */
   async searchCatalogForQuickAdd(query) {
     const resultsContainer = document.getElementById('quick-add-results');
@@ -1145,15 +1425,20 @@ class App {
     resultsContainer.innerHTML = '<div class="quick-add-prompt"><i class="fa-solid fa-spinner fa-spin"></i> Searching library...</div>';
 
     try {
-      const res = await fetch(`/api/songs?search=${encodeURIComponent(query)}&limit=8`);
-      const songs = await res.json();
+      // No genre filter, no limit cap — returns all matches up to 500 via search path
+      const res = await fetch(`/api/songs?search=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      const songs = data.songs || data;  // backward-compat if still bare array
+      const total = data.total != null ? data.total : songs.length;
 
       if (!songs || songs.length === 0) {
         resultsContainer.innerHTML = '<div class="quick-add-prompt">No matching songs found in library.</div>';
         return;
       }
 
-      resultsContainer.innerHTML = songs.map(s => {
+      const countEl = `<div class="quick-add-prompt" style="margin-bottom:4px; font-size:11px; color:var(--text-muted);"><i class="fa-solid fa-compact-disc"></i> ${total} match${total !== 1 ? 'es' : ''} in catalog</div>`;
+
+      const rows = songs.map(s => {
         const cover = s.image_url || DEFAULT_COVER_ART;
         const songJson = JSON.stringify(s).replace(/"/g, '&quot;');
         return `
@@ -1178,7 +1463,9 @@ class App {
             </div>
           </div>
         `;
-      }).join('');
+      });
+
+      resultsContainer.innerHTML = countEl + rows.join('');
     } catch (e) {
       console.error('Quick add search error:', e);
       resultsContainer.innerHTML = '<div class="quick-add-prompt">Error querying songs catalog.</div>';
@@ -1226,6 +1513,31 @@ class App {
       this.updateCounters();
       this.addHistoryChip(this.currentTrack, actionType, r);
       this.updateMiniPlayer();
+
+      // Update interactive RL closed loop visualizer
+      if (window.rlVisualizer && window.rlVisualizer.updateRLStateLoop) {
+        const uState = data.user_state || {
+          user_id: this.currentUserId,
+          current_track: this.currentTrack,
+          total_interactions: this.sessionStep
+        };
+        uState.current_track = this.currentTrack;
+        window.rlVisualizer.updateRLStateLoop(
+          uState,
+          this.currentQDist,
+          { action_type: actionType, reward: r },
+          {
+            policy_updated: data.policy_updated,
+            loss_info: data.loss_info,
+            buffer_size: data.buffer_size
+          }
+        );
+      }
+
+      if (data.policy_updated) {
+        const lossVal = data.loss_info?.critic_loss ? data.loss_info.critic_loss.toFixed(4) : '';
+        this.showToast(`🧠 RL Policy Updated via TD-Step ${lossVal ? `(Loss: ${lossVal})` : ''}`, 'success');
+      }
 
       await this.fetchNextRecommendation();
     } catch (e) {
@@ -1354,13 +1666,17 @@ class App {
 
     try {
       const res = await fetch(`/api/openspot/search?q=${encodeURIComponent(query)}&limit=24`);
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
       const data = await res.json();
       const results = data.results || [];
 
       if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i> Search Results: "${query}"`;
       if (countEl) countEl.innerText = `${results.length} tracks`;
 
+      this.openSpotCurrentResults = results;
+      this.selectedOpenSpotIds.clear();
       this.renderOpenSpotGrid(results);
+      this._updateOpenSpotBulkActions();
     } catch (e) {
       grid.innerHTML = `<div class="openspot-empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Error searching OpenSpot: ${e.message}</p></div>`;
     }
@@ -1376,15 +1692,141 @@ class App {
 
     try {
       const res = await fetch(`/api/openspot/charts?genre=${encodeURIComponent(genre)}&limit=24`);
+      if (!res.ok) throw new Error(`Charts failed (${res.status})`);
       const data = await res.json();
       const results = data.results || [];
 
       if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-fire"></i> Top ${genre} Trending Hits`;
       if (countEl) countEl.innerText = `${results.length} tracks`;
 
+      this.openSpotCurrentResults = results;
+      this.selectedOpenSpotIds.clear();
       this.renderOpenSpotGrid(results);
+      this._updateOpenSpotBulkActions();
     } catch (e) {
       grid.innerHTML = `<div class="openspot-empty-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Error loading charts: ${e.message}</p></div>`;
+    }
+  }
+
+  /** Updates the bulk-action bar in the OpenSpot results panel based on selection state. */
+  _updateOpenSpotBulkActions() {
+    const bar = document.getElementById('openspot-bulk-bar');
+    if (!bar) return;
+    const total = this.openSpotCurrentResults.length;
+    const selected = this.selectedOpenSpotIds.size;
+    bar.style.display = total > 0 ? 'flex' : 'none';
+
+    const selCountEl = bar.querySelector('#openspot-sel-count');
+    if (selCountEl) selCountEl.innerText = selected > 0 ? `${selected} selected` : `${total} tracks`;
+
+    const btnImportSel = bar.querySelector('#btn-import-selected');
+    if (btnImportSel) {
+      btnImportSel.disabled = selected === 0;
+      btnImportSel.innerHTML = `<i class="fa-solid fa-brain"></i> Import Selected${selected > 0 ? ` (${selected})` : ''}`;
+    }
+  }
+
+  /** Toggles a track's checkbox selection in the OpenSpot grid. */
+  toggleOpenSpotSelection(songId) {
+    if (this.selectedOpenSpotIds.has(songId)) {
+      this.selectedOpenSpotIds.delete(songId);
+    } else {
+      this.selectedOpenSpotIds.add(songId);
+    }
+    // Reflect on card UI
+    const card = document.getElementById(`card-${songId}`);
+    if (card) card.classList.toggle('selected', this.selectedOpenSpotIds.has(songId));
+    this._updateOpenSpotBulkActions();
+  }
+
+  /** Selects or deselects all visible OpenSpot tracks. */
+  toggleSelectAllOpenSpot() {
+    const allSelected = this.selectedOpenSpotIds.size === this.openSpotCurrentResults.length;
+    this.selectedOpenSpotIds.clear();
+    if (!allSelected) {
+      this.openSpotCurrentResults.forEach(t => this.selectedOpenSpotIds.add(t.song_id));
+    }
+    // Re-render to sync checkboxes
+    this.renderOpenSpotGrid(this.openSpotCurrentResults);
+    this._updateOpenSpotBulkActions();
+  }
+
+  /** Adds all currently-visible OpenSpot results to the player queue. */
+  addAllOpenSpotToQueue() {
+    if (!this.openSpotCurrentResults || this.openSpotCurrentResults.length === 0) {
+      this.showToast('No tracks loaded — search or pick a genre first.');
+      return;
+    }
+    let added = 0;
+    this.openSpotCurrentResults.forEach(track => {
+      if (!this.currentQueueTracks.find(t => t.song_id === track.song_id)) {
+        this.currentQueueTracks.push(track);
+        added++;
+      }
+    });
+    this.renderQueue();
+    this.showToast(`✅ Added ${added} OpenSpot tracks to queue!`);
+    this.switchTab('player-tab');
+  }
+
+  /** Plays the first OpenSpot result and queues the rest. */
+  playAllOpenSpot() {
+    if (!this.openSpotCurrentResults || this.openSpotCurrentResults.length === 0) {
+      this.showToast('No tracks loaded — search or pick a genre first.');
+      return;
+    }
+    const [first, ...rest] = this.openSpotCurrentResults;
+    // Queue the rest
+    rest.forEach(track => {
+      if (!this.currentQueueTracks.find(t => t.song_id === track.song_id)) {
+        this.currentQueueTracks.push(track);
+      }
+    });
+    this.renderQueue();
+    this.previewOpenSpotTrack(encodeURIComponent(JSON.stringify(first)));
+    this.showToast(`▶ Playing "${first.title}" + ${rest.length} more queued!`);
+  }
+
+  /** Batch-imports all checkbox-selected OpenSpot tracks into the RL catalog. */
+  async importSelectedOpenSpot() {
+    const selectedTracks = this.openSpotCurrentResults.filter(t => this.selectedOpenSpotIds.has(t.song_id));
+    if (selectedTracks.length === 0) {
+      this.showToast('Select at least one track to import.');
+      return;
+    }
+
+    const btn = document.getElementById('btn-import-selected');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Importing...'; }
+
+    try {
+      const res = await fetch('/api/openspot/import/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tracks: selectedTracks })
+      });
+      if (!res.ok) throw new Error(`Import batch failed (${res.status})`);
+      const data = await res.json();
+
+      data.imported.forEach(sid => this.importedTrackIds.add(sid));
+
+      if (data.imported.length > 0) {
+        this.showToast(`✨ Imported ${data.imported.length} tracks into RL catalog! Catalog now: ${data.catalog_size} songs.`);
+      }
+      if (data.failed.length > 0) {
+        this.showToast(`⚠️ ${data.failed.length} tracks failed to import. Check console for details.`, 'error');
+        console.warn('[BatchImport] Failed tracks:', data.failed);
+      }
+
+      // Re-render grid to update Import buttons
+      this.renderOpenSpotGrid(this.openSpotCurrentResults);
+      this.selectedOpenSpotIds.clear();
+      this._updateOpenSpotBulkActions();
+      this.loadCatalog();
+    } catch (e) {
+      console.error('Batch import error:', e);
+      this.showToast(`❌ Batch import error: ${e.message}`, 'error');
+    } finally {
+      if (btn) { btn.disabled = false; this._updateOpenSpotBulkActions(); }
     }
   }
 
@@ -1400,11 +1842,16 @@ class App {
     grid.innerHTML = tracks.map((track, idx) => {
       const cover = track.image_url || DEFAULT_COVER_ART;
       const isImported = this.importedTrackIds.has(track.song_id);
+      const isSelected = this.selectedOpenSpotIds.has(track.song_id);
       const jsonStr = encodeURIComponent(JSON.stringify(track));
 
       return `
-        <div class="openspot-track-card" id="card-${track.song_id}">
+        <div class="openspot-track-card ${isSelected ? 'selected' : ''}" id="card-${track.song_id}">
           <div class="card-top-row">
+            <label class="openspot-checkbox-wrap" title="Select for batch import">
+              <input type="checkbox" class="openspot-track-checkbox" ${isSelected ? 'checked' : ''}
+                onchange="window.app.toggleOpenSpotSelection('${track.song_id}')">
+            </label>
             <img class="card-cover" src="${cover}" alt="${track.title}">
             <div class="card-content">
               <div class="card-title" title="${track.title}">${track.title}</div>
@@ -1424,8 +1871,11 @@ class App {
             <button class="btn-preview-stream" onclick="window.app.previewOpenSpotTrack('${jsonStr}')">
               <i class="fa-solid fa-play"></i> Stream
             </button>
+            <button class="btn-small" onclick="window.app.addTrackToQueue(JSON.parse(decodeURIComponent('${jsonStr}')), false)" title="Add to Queue">
+              <i class="fa-solid fa-plus"></i> Queue
+            </button>
             <button class="btn-import-rl ${isImported ? 'imported' : ''}" id="btn-import-${track.song_id}" onclick="window.app.importOpenSpotTrack('${jsonStr}')">
-              <i class="fa-solid ${isImported ? 'fa-check' : 'fa-plus'}"></i> ${isImported ? 'In RL Brain' : 'Import to RL'}
+              <i class="fa-solid ${isImported ? 'fa-check' : 'fa-brain'}"></i> ${isImported ? 'In RL' : 'Import RL'}
             </button>
           </div>
         </div>
@@ -1441,6 +1891,16 @@ class App {
       this.switchTab('player-tab');
       window.audioSynth.playTrack(track);
       this.loadLyricsForTrack(track);
+      // Also add remaining OpenSpot results to the queue so skipping works
+      if (this.openSpotCurrentResults && this.openSpotCurrentResults.length > 1) {
+        const remaining = this.openSpotCurrentResults.filter(t => t.song_id !== track.song_id);
+        remaining.forEach(t => {
+          if (!this.currentQueueTracks.find(q => q.song_id === t.song_id)) {
+            this.currentQueueTracks.push(t);
+          }
+        });
+        this.renderQueue();
+      }
       this.showToast(`Now Streaming: "${track.title}" by ${track.artist_name}`);
     } catch (e) {
       console.error('Error previewing track:', e);
@@ -1462,35 +1922,42 @@ class App {
         const btn = document.getElementById(`btn-import-${track.song_id}`);
         if (btn) {
           btn.className = 'btn-import-rl imported';
-          btn.innerHTML = '<i class="fa-solid fa-check"></i> In RL Brain';
+          btn.innerHTML = '<i class="fa-solid fa-check"></i> In RL';
         }
-        this.showToast(`✨ Imported "${track.title}" into active RL Recommendation Brain! Catalog size: ${data.catalog_size}`);
+        // Also add to queue for immediate use
+        this.addTrackToQueue(track, false);
+        this.showToast(`✨ Imported "${track.title}" into RL catalog (${data.catalog_size} total). Added to queue!`);
         this.loadCatalog();
       } else {
-        alert(`Import failed: ${data.detail || 'Unknown error'}`);
+        this.showToast(`❌ Import failed: ${data.detail || 'Unknown error'}`, 'error');
       }
     } catch (e) {
       console.error('Error importing track:', e);
     }
   }
 
-  showToast(message) {
+  showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     if (!container) return;
 
     const toast = document.createElement('div');
-    toast.className = 'toast-message';
-    toast.innerHTML = `<i class="fa-solid fa-circle-check"></i> <span>${message}</span>`;
+    toast.className = 'toast-message' + (type === 'error' ? ' toast-error' : '');
+    const icon = type === 'error' ? 'fa-triangle-exclamation' : 'fa-circle-check';
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
     container.appendChild(toast);
 
     setTimeout(() => {
       toast.style.opacity = '0';
       toast.style.transform = 'translateY(10px)';
       setTimeout(() => toast.remove(), 300);
-    }, 4000);
+    }, type === 'error' ? 7000 : 4000);
   }
 
-  async loadCatalog() {
+  /**
+   * Loads the Song Catalog tab with pagination and Load More support.
+   * Browse mode: 100 per page. Search mode: all results (server returns up to 500 matches).
+   */
+  async loadCatalog(appendOffset = 0) {
     const searchInp = document.getElementById('catalog-search');
     const genreSel = document.getElementById('catalog-genre-filter');
     const tbody = document.getElementById('catalog-table-body');
@@ -1499,13 +1966,28 @@ class App {
     const query = searchInp ? searchInp.value : '';
     const genre = genreSel ? genreSel.value : 'All';
 
-    try {
-      const res = await fetch(`/api/songs?genre=${encodeURIComponent(genre)}&search=${encodeURIComponent(query)}&limit=40`);
-      const songs = await res.json();
+    // Reset to first page on new search/genre change
+    if (appendOffset === 0) {
+      this._catalogOffset = 0;
+    }
+    const offset = appendOffset;
+    const PAGE_SIZE = 100;
 
-      tbody.innerHTML = songs.map(s => {
+    try {
+      let url = `/api/songs?genre=${encodeURIComponent(genre)}&search=${encodeURIComponent(query)}`;
+      if (!query) {
+        // Browse mode — paginate with a real page size
+        url += `&offset=${offset}&limit=${PAGE_SIZE}`;
+      }
+      // Note: search mode returns all matches up to 500 (no offset needed)
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
+      const data = await res.json();
+      const songs = data.songs || data;
+      const total = data.total != null ? data.total : songs.length;
+
+      const renderRows = songs.map(s => {
         const cover = s.image_url || DEFAULT_COVER_ART;
-        
         return `
           <tr>
             <td><img class="catalog-thumb" src="${cover}" alt="Cover"></td>
@@ -1514,14 +1996,17 @@ class App {
               <div style="font-size:11.5px; color:var(--text-secondary);">${s.artist_name}</div>
             </td>
             <td><span class="track-genre-badge">${s.genre}</span></td>
-            <td>${s.energy.toFixed(2)}</td>
-            <td>${s.danceability.toFixed(2)}</td>
-            <td>${s.valence.toFixed(2)}</td>
-            <td>${Math.round(s.tempo)} BPM</td>
+            <td>${(s.energy||0).toFixed(2)}</td>
+            <td>${(s.danceability||0).toFixed(2)}</td>
+            <td>${(s.valence||0).toFixed(2)}</td>
+            <td>${Math.round(s.tempo||0)} BPM</td>
             <td>
               <div style="display:flex; gap:6px;">
                 <button class="btn-small" onclick="window.app.playCatalogSong('${s.song_id}')" title="Play Now">
                   <i class="fa-solid fa-play"></i> Play
+                </button>
+                <button class="btn-small" onclick="window.app.addTrackToQueue(${JSON.stringify(s).replace(/"/g, '&quot;')}, false)" title="Add to Queue">
+                  <i class="fa-solid fa-plus"></i> Queue
                 </button>
                 <button class="btn-small" onclick="window.app.openRelatedHub('${s.song_id}')" title="Find Related Songs (Vector Search)">
                   <i class="fa-solid fa-wand-magic-sparkles"></i> Related
@@ -1531,6 +2016,33 @@ class App {
           </tr>
         `;
       }).join('');
+
+      if (offset === 0) {
+        tbody.innerHTML = renderRows;
+      } else {
+        tbody.innerHTML += renderRows;
+      }
+
+      // Update or remove Load More button
+      const nextOffset = offset + songs.length;
+      const loadMoreId = 'catalog-load-more-btn';
+      let existingBtn = document.getElementById(loadMoreId);
+      if (existingBtn) existingBtn.remove();
+
+      if (!query && nextOffset < total) {
+        const remaining = total - nextOffset;
+        const btn = document.createElement('button');
+        btn.id = loadMoreId;
+        btn.className = 'btn-small';
+        btn.style.cssText = 'margin:12px auto; display:block; min-width:180px;';
+        btn.innerHTML = `<i class="fa-solid fa-chevron-down"></i> Load More (${remaining} remaining)`;
+        btn.addEventListener('click', () => this.loadCatalog(nextOffset));
+        tbody.parentElement.parentElement.appendChild(btn);
+      }
+
+      // Update header count if element exists
+      const countEl = document.getElementById('catalog-count-badge');
+      if (countEl) countEl.innerText = `${total} tracks`;
     } catch (e) {
       console.error('Catalog load error:', e);
     }
@@ -1736,19 +2248,24 @@ class App {
 
   async playSongDirectly(songId) {
     try {
-      // FIX: Use song_id as direct search key; fallback to stream/resolve for audio URL
-      const res = await fetch(`/api/songs?search=${encodeURIComponent(songId)}&limit=5`);
-      const songs = await res.json();
-      // Match by song_id exactly (search endpoint does text match on song_id field too)
-      let track = songs.find(s => s.song_id === songId) || (songs.length > 0 ? songs[0] : null);
+      // Use stream/resolve directly — avoids the fragile limit=5 text-search that would miss
+      // most songs when searching by song_id.
+      const resolveRes = await fetch(`/api/stream/resolve?song_id=${encodeURIComponent(songId)}`);
+      if (!resolveRes.ok) throw new Error(`stream/resolve failed: ${resolveRes.status}`);
+      const resolveData = await resolveRes.json();
 
-      if (!track) {
-        // If text search failed to find exact match, use stream/resolve to get metadata
-        const resolveRes = await fetch(`/api/stream/resolve?song_id=${encodeURIComponent(songId)}`);
-        const resolveData = await resolveRes.json();
-        if (resolveData && resolveData.song_id) {
-          track = resolveData;
-        }
+      // Fetch full metadata from catalog via exact ID match
+      const metaRes = await fetch(`/api/songs?search=${encodeURIComponent(songId)}`);
+      const metaData = await metaRes.json();
+      const songs = metaData.songs || metaData;
+      let track = songs.find(s => s.song_id === songId) || null;
+
+      // Merge resolved audio/image URLs into track metadata
+      if (track) {
+        if (resolveData.audio_url) track.audio_url = resolveData.audio_url;
+        if (resolveData.image_url) track.image_url = resolveData.image_url;
+      } else if (resolveData && resolveData.song_id) {
+        track = resolveData;
       }
 
       if (track) {
@@ -1815,6 +2332,10 @@ class App {
 
     const pane = document.getElementById(tabId);
     if (pane) pane.classList.add('active');
+
+    // Reset scroll to top of view
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) mainContent.scrollTop = 0;
 
     // Show mini-player when not on player tab
     const mini = document.getElementById('mini-player-bar');
@@ -1957,6 +2478,400 @@ class App {
       </div>
       ` : ''}
     `;
+  }
+
+  // =========================================================================
+  // Spotify Aesthetic Modules & Shelves Implementation
+  // =========================================================================
+
+  renderSpotifyHomeShelves(recommendations, qDist = []) {
+    const madeForYouShelf = document.getElementById('shelf-made-for-you');
+    const discoverShelf = document.getElementById('shelf-discover-weekly');
+    const trendingShelf = document.getElementById('shelf-trending-hits');
+    const greetingTitle = document.getElementById('home-greeting-title');
+    const profileBadge = document.getElementById('home-profile-name');
+
+    // Dynamic greeting based on time of day
+    const hour = new Date().getHours();
+    let greet = 'Good morning';
+    if (hour >= 12 && hour < 17) greet = 'Good afternoon';
+    else if (hour >= 17 || hour < 5) greet = 'Good evening';
+
+    if (greetingTitle) greetingTitle.innerText = greet;
+    if (profileBadge && this.userProfile) {
+      const topG = this.userProfile.genre_affinities ? Object.keys(this.userProfile.genre_affinities)[0] : 'Lo-Fi';
+      profileBadge.innerText = `${topG} Listener`;
+    }
+
+    if (!recommendations || recommendations.length === 0) return;
+
+    // 1. Shelf 1: Made For You (RL Policy Slate)
+    if (madeForYouShelf) {
+      madeForYouShelf.innerHTML = recommendations.slice(0, 8).map((track, idx) => {
+        const cover = track.image_url || DEFAULT_COVER_ART;
+        const qVal = qDist[idx] ? `Q: +${Number(qDist[idx].q_score).toFixed(2)}` : 'RL Pick';
+        return `
+          <div class="spotify-card" onclick="window.app.playSongDirectly('${track.song_id}')">
+            <div class="sp-card-thumb-box">
+              <img class="sp-card-img" src="${cover}" alt="Cover">
+              <button class="sp-card-floating-play" title="Play ${this.escapeHtml(track.title)}">
+                <i class="fa-solid fa-play"></i>
+              </button>
+            </div>
+            <div class="sp-card-title" title="${this.escapeHtml(track.title)}">${this.escapeHtml(track.title)}</div>
+            <div class="sp-card-desc">${this.escapeHtml(track.artist_name)} • ${this.escapeHtml(track.genre)}</div>
+            <span class="sp-card-q-badge"><i class="fa-solid fa-brain"></i> ${qVal}</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 2. Shelf 2: Discover Weekly (AI Exploration)
+    if (discoverShelf) {
+      // Reverse or filter higher exploration tracks
+      const discTracks = [...recommendations].reverse().slice(0, 8);
+      discoverShelf.innerHTML = discTracks.map((track) => {
+        const cover = track.image_url || DEFAULT_COVER_ART;
+        return `
+          <div class="spotify-card" onclick="window.app.playSongDirectly('${track.song_id}')">
+            <div class="sp-card-thumb-box">
+              <img class="sp-card-img" src="${cover}" alt="Cover">
+              <button class="sp-card-floating-play" title="Play ${this.escapeHtml(track.title)}">
+                <i class="fa-solid fa-play"></i>
+              </button>
+            </div>
+            <div class="sp-card-title" title="${this.escapeHtml(track.title)}">${this.escapeHtml(track.title)}</div>
+            <div class="sp-card-desc">${this.escapeHtml(track.artist_name)} • High Novelty</div>
+            <span class="sp-card-q-badge" style="background:rgba(56,189,248,0.15); color:#38bdf8;">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> AI Discovery
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // 3. Shelf 3: Trending Hits (from OpenSpot if available, or catalog top popularity)
+    if (trendingShelf) {
+      const trendTracks = this.openSpotCurrentResults.length > 0
+        ? this.openSpotCurrentResults.slice(0, 8)
+        : recommendations.slice(2, 10);
+
+      trendingShelf.innerHTML = trendTracks.map((track) => {
+        const cover = track.image_url || DEFAULT_COVER_ART;
+        return `
+          <div class="spotify-card" onclick="window.app.previewOpenSpotTrack(encodeURIComponent(JSON.stringify(${JSON.stringify(track).replace(/"/g, '&quot;')})))">
+            <div class="sp-card-thumb-box">
+              <img class="sp-card-img" src="${cover}" alt="Cover">
+              <button class="sp-card-floating-play" title="Stream 320kbps">
+                <i class="fa-solid fa-play"></i>
+              </button>
+            </div>
+            <div class="sp-card-title" title="${this.escapeHtml(track.title)}">${this.escapeHtml(track.title)}</div>
+            <div class="sp-card-desc">${this.escapeHtml(track.artist_name || 'Popular Artist')} • OpenSpot 320k</div>
+            <span class="sp-card-q-badge" style="background:rgba(29,185,84,0.15); color:var(--accent-green-bright);">
+              <i class="fa-solid fa-bolt"></i> Trending
+            </span>
+          </div>
+        `;
+      }).join('');
+    }
+  }
+
+  renderSpotifyLibrary() {
+    const listContainer = document.getElementById('library-tracks-list');
+    const likedCountEl = document.getElementById('lib-liked-count');
+    const sidebarCountEl = document.getElementById('sidebar-liked-count');
+    const userLabelEl = document.getElementById('lib-user-label');
+
+    if (userLabelEl && this.userProfile) {
+      userLabelEl.innerText = this.userProfile.genre_affinities ? Object.keys(this.userProfile.genre_affinities)[0] : 'Lo-Fi Coder';
+    }
+
+    const likedEvents = this.sessionTrajectoryHistory.filter(h => h.action === 'liked');
+    const likedTracks = likedEvents.map(h => h.track);
+
+    if (likedCountEl) likedCountEl.innerText = `${likedTracks.length} song${likedTracks.length === 1 ? '' : 's'}`;
+    if (sidebarCountEl) sidebarCountEl.innerText = `${likedTracks.length} saved songs`;
+
+    if (!listContainer) return;
+
+    if (likedTracks.length === 0) {
+      listContainer.innerHTML = `
+        <div style="padding: 32px 16px; text-align: center; color: var(--text-secondary);">
+          <i class="fa-regular fa-heart" style="font-size: 28px; color: var(--text-muted); margin-bottom: 10px;"></i>
+          <p style="font-size: 13px; margin: 0 0 10px;">Songs you like will appear here and train your RL policy.</p>
+          <button class="btn-small" onclick="window.app.switchTab('player-tab')">
+            <i class="fa-solid fa-play"></i> Start Listening & Liking
+          </button>
+        </div>
+      `;
+      return;
+    }
+
+    listContainer.innerHTML = likedTracks.map((track, idx) => {
+      const cover = track.image_url || DEFAULT_COVER_ART;
+      const dur = track.duration_formatted || '3:30';
+      return `
+        <div class="lib-track-row" onclick="window.app.playSongDirectly('${track.song_id}')">
+          <span style="color: var(--text-muted); font-size: 12px;">${idx + 1}</span>
+          <div class="lib-col-title">
+            <img class="lib-thumb" src="${cover}" alt="Art">
+            <div>
+              <div style="color: #fff; font-weight: 700;">${this.escapeHtml(track.title)}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${this.escapeHtml(track.artist_name)}</div>
+            </div>
+          </div>
+          <div>${this.escapeHtml(track.artist_name)}</div>
+          <div><span class="track-genre-badge" style="font-size: 10px;">${this.escapeHtml(track.genre)}</span></div>
+          <div style="font-family: var(--font-mono); font-size: 11px;">${dur}</div>
+          <div>
+            <button class="btn-icon-small" title="Liked (+1.0 RL Reward)" style="color: var(--accent-green-bright);" onclick="event.stopPropagation();">
+              <i class="fa-solid fa-heart"></i>
+            </button>
+            <button class="btn-icon-small" title="Play Now" onclick="event.stopPropagation(); window.app.playSongDirectly('${track.song_id}');">
+              <i class="fa-solid fa-play"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  playDailyMix(mixNum) {
+    if (mixNum === 1) {
+      this.currentModelType = 'wolpertinger';
+      this.switchTab('player-tab');
+      this.fetchNextRecommendation();
+      this.showToast('☕ Starting Daily Mix 1: Chill Study Beats');
+    } else {
+      this.switchTab('openspot-tab');
+      this.loadOpenSpotCharts('Pop');
+      this.showToast('⚡ Starting Release Radar: Top Trending OpenSpot Hits');
+    }
+  }
+
+  updateSpotifyPlayerBar() {
+    if (!this.currentTrack) return;
+    const t = this.currentTrack;
+    const cover = t.image_url || DEFAULT_COVER_ART;
+
+    const coverEl = document.getElementById('sp-player-cover');
+    const titleEl = document.getElementById('sp-player-title');
+    const artistEl = document.getElementById('sp-player-artist');
+    const playBtn = document.getElementById('sp-btn-play');
+    const likeBtn = document.getElementById('sp-btn-like');
+    const durEl = document.getElementById('sp-time-dur');
+    const curEl = document.getElementById('sp-time-cur');
+    const scrubber = document.getElementById('sp-audio-scrubber');
+
+    if (coverEl) coverEl.src = cover;
+    if (titleEl) titleEl.innerText = t.title || 'No Track';
+    if (artistEl) artistEl.innerText = `${t.artist_name || 'Artist'} • ${t.genre || 'Music'}`;
+
+    const isPlaying = window.audioSynth.isPlaying;
+    if (playBtn) {
+      playBtn.innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+    }
+
+    const isLiked = this.historyLikes.length > 0 && this.historyLikes[this.historyLikes.length - 1] === 1;
+    if (likeBtn) {
+      likeBtn.innerHTML = isLiked ? '<i class="fa-solid fa-heart" style="color:var(--accent-green-bright);"></i>' : '<i class="fa-regular fa-heart"></i>';
+    }
+
+    const cur = window.audioSynth.getCurrentTime();
+    const dur = window.audioSynth.getDuration();
+    if (durEl && dur > 0) {
+      const min = Math.floor(dur / 60);
+      const sec = Math.floor(dur % 60).toString().padStart(2, '0');
+      durEl.innerText = `${min}:${sec}`;
+    }
+    if (curEl) {
+      const min = Math.floor(cur / 60);
+      const sec = Math.floor(cur % 60).toString().padStart(2, '0');
+      curEl.innerText = `${min}:${sec}`;
+    }
+    if (scrubber && dur > 0) {
+      scrubber.value = (cur / dur) * 100;
+    }
+  }
+
+  // =========================================================================
+  // Custom Playlist Management & Modals
+  // =========================================================================
+
+  openCreatePlaylistModal() {
+    const modal = document.getElementById('create-playlist-modal');
+    const nameInput = document.getElementById('input-playlist-name');
+    const descInput = document.getElementById('input-playlist-desc');
+    if (nameInput) nameInput.value = '';
+    if (descInput) descInput.value = '';
+    if (modal) modal.style.display = 'flex';
+    if (nameInput) setTimeout(() => nameInput.focus(), 100);
+  }
+
+  closeCreatePlaylistModal() {
+    const modal = document.getElementById('create-playlist-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  submitCreatePlaylist() {
+    const nameInput = document.getElementById('input-playlist-name');
+    const descInput = document.getElementById('input-playlist-desc');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const desc = descInput ? descInput.value.trim() : '';
+
+    if (!name) {
+      this.showToast('⚠️ Please enter a playlist name.');
+      return;
+    }
+
+    const newPl = {
+      id: `pl_${Date.now()}`,
+      name: name,
+      desc: desc || 'Custom created playlist',
+      tracks: []
+    };
+
+    this.customPlaylists.push(newPl);
+    localStorage.setItem('soundspace_custom_playlists', JSON.stringify(this.customPlaylists));
+    this.closeCreatePlaylistModal();
+    this.renderCustomPlaylists();
+    this.showToast(`✨ Created playlist "${name}"!`);
+  }
+
+  openAddToPlaylistModal(track) {
+    this.pendingTrackForPlaylist = track || this.currentTrack;
+    if (!this.pendingTrackForPlaylist) return;
+
+    const modal = document.getElementById('add-to-playlist-modal');
+    const previewThumb = document.getElementById('modal-preview-thumb');
+    const previewTitle = document.getElementById('modal-preview-title');
+    const previewArtist = document.getElementById('modal-preview-artist');
+    const plList = document.getElementById('modal-playlists-list');
+
+    const t = this.pendingTrackForPlaylist;
+    if (previewThumb) previewThumb.src = t.image_url || DEFAULT_COVER_ART;
+    if (previewTitle) previewTitle.innerText = t.title;
+    if (previewArtist) previewArtist.innerText = t.artist_name || 'Unknown Artist';
+
+    if (plList) {
+      if (this.customPlaylists.length === 0) {
+        plList.innerHTML = '<p style="color:var(--text-muted); font-size:12px; padding:10px 0;">No custom playlists yet. Create one below!</p>';
+      } else {
+        plList.innerHTML = this.customPlaylists.map(pl => {
+          const isIncluded = pl.tracks.some(tr => tr.song_id === t.song_id);
+          return `
+            <div class="modal-pl-item" onclick="window.app.toggleTrackInPlaylist('${pl.id}')">
+              <div class="modal-pl-meta">
+                <div class="modal-pl-icon"><i class="fa-solid fa-music"></i></div>
+                <div>
+                  <div style="font-weight:700; color:#fff; font-size:13px;">${this.escapeHtml(pl.name)}</div>
+                  <div style="font-size:11px; color:var(--text-muted);">${pl.tracks.length} songs</div>
+                </div>
+              </div>
+              <div>
+                ${isIncluded
+                  ? '<span style="color:var(--accent-green-bright); font-size:12px; font-weight:700;"><i class="fa-solid fa-check"></i> Added</span>'
+                  : '<button class="btn-icon-small" style="font-size:11px;"><i class="fa-solid fa-plus"></i></button>'
+                }
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+
+    if (modal) modal.style.display = 'flex';
+  }
+
+  closeAddToPlaylistModal() {
+    const modal = document.getElementById('add-to-playlist-modal');
+    if (modal) modal.style.display = 'none';
+  }
+
+  toggleTrackInPlaylist(playlistId) {
+    const pl = this.customPlaylists.find(p => p.id === playlistId);
+    const track = this.pendingTrackForPlaylist;
+    if (!pl || !track) return;
+
+    const existingIdx = pl.tracks.findIndex(t => t.song_id === track.song_id);
+    if (existingIdx >= 0) {
+      pl.tracks.splice(existingIdx, 1);
+      this.showToast(`Removed "${track.title}" from "${pl.name}"`);
+    } else {
+      pl.tracks.push(track);
+      this.showToast(`Added "${track.title}" to "${pl.name}"`);
+    }
+
+    localStorage.setItem('soundspace_custom_playlists', JSON.stringify(this.customPlaylists));
+    this.openAddToPlaylistModal(track);
+    this.renderCustomPlaylists();
+  }
+
+  renderCustomPlaylists() {
+    const sidebarPlContainer = document.querySelector('.quick-playlist-items');
+    if (sidebarPlContainer) {
+      const customHtml = this.customPlaylists.map(pl => `
+        <div class="quick-pl-item" data-playlist="${pl.id}" onclick="window.app.playCustomPlaylist('${pl.id}')">
+          <div class="pl-icon-gradient" style="background: linear-gradient(135deg, #11998e, #38ef7d);">
+            <i class="fa-solid fa-music"></i>
+          </div>
+          <div class="pl-meta">
+            <span class="pl-name">${this.escapeHtml(pl.name)}</span>
+            <span class="pl-sub">${pl.tracks.length} songs • Custom</span>
+          </div>
+        </div>
+      `).join('');
+
+      const defaultItems = `
+        <div class="quick-pl-item" data-playlist="liked" onclick="window.app.switchTab('library-tab')">
+          <div class="pl-icon-gradient"><i class="fa-solid fa-heart"></i></div>
+          <div class="pl-meta">
+            <span class="pl-name">Liked Songs</span>
+            <span class="pl-sub" id="sidebar-liked-count">${this.sessionTrajectoryHistory.filter(h => h.action === 'liked').length} saved songs</span>
+          </div>
+        </div>
+        <div class="quick-pl-item" data-playlist="discover" onclick="window.app.switchTab('home-tab')">
+          <div class="pl-icon-gradient discover"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+          <div class="pl-meta">
+            <span class="pl-name">Discover Weekly</span>
+            <span class="pl-sub">AI RL Curated</span>
+          </div>
+        </div>
+        <div class="quick-pl-item" data-playlist="daily1" onclick="window.app.playDailyMix(1)">
+          <div class="pl-icon-gradient daily"><i class="fa-solid fa-bolt"></i></div>
+          <div class="pl-meta">
+            <span class="pl-name">Daily Mix 1</span>
+            <span class="pl-sub">Lo-Fi & Chillhop</span>
+          </div>
+        </div>
+        <div class="quick-pl-item" data-playlist="daily2" onclick="window.app.playDailyMix(2)">
+          <div class="pl-icon-gradient radar"><i class="fa-solid fa-tower-broadcast"></i></div>
+          <div class="pl-meta">
+            <span class="pl-name">Release Radar</span>
+            <span class="pl-sub">New OpenSpot Hits</span>
+          </div>
+        </div>
+      `;
+
+      sidebarPlContainer.innerHTML = defaultItems + customHtml;
+    }
+  }
+
+  playCustomPlaylist(playlistId) {
+    const pl = this.customPlaylists.find(p => p.id === playlistId);
+    if (!pl) return;
+
+    if (pl.tracks.length === 0) {
+      this.showToast(`"${pl.name}" is empty. Click + on any track to add songs!`);
+      return;
+    }
+
+    const [first, ...rest] = pl.tracks;
+    this.currentQueueTracks = [...rest];
+    this.renderQueue();
+    this.playSongDirectly(first.song_id);
+    this.showToast(`▶ Playing "${pl.name}" (${pl.tracks.length} songs)!`);
   }
 }
 

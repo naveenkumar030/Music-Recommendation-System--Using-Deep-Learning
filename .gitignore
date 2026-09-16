@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 *.class
@@ -11,9 +11,10 @@ dist/
 
 # Virtual environments
 venv/
-env/
+/env/
 .env
 .venv/
+.freebuff/
 
 # Pytest
 .pytest_cache/

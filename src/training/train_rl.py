@@ -48,6 +48,7 @@ def evaluate_policy_in_env(
         done = False
         ep_return = 0.0
         step_count = 0
+        session_actions = []
 
         while not done:
             # Candidate generation from Two-Tower shortlist
@@ -66,12 +67,18 @@ def evaluate_policy_in_env(
                 cand_probs = cand_probs / cand_probs.sum()
                 action = cand_indices[np.random.choice(len(cand_probs), p=cand_probs)]
             elif policy_type == "wolpertinger":
-                action, _ = agent.select_action(obs, candidate_indices=cand_indices, exploration_noise=0.0)
+                action, _ = agent.select_action(
+                    obs,
+                    candidate_indices=cand_indices,
+                    exploration_noise=0.0,
+                    recent_action_indices=session_actions
+                )
             elif policy_type == "dqn":
                 action = agent.select_action(obs, candidate_indices=cand_indices)
             else:
                 action = cand_indices[0]
 
+            session_actions.append(action)
             obs, reward, terminated, truncated, step_info = env.step(action)
             ep_return += reward
             step_count += 1
@@ -167,12 +174,22 @@ def train_rl_agents(
     global_step = 0
     best_eval_return = -float("inf")
 
-    # Initial warmup buffer population
-    for ep in range(1, 30):
+    # Initial warmup buffer population with baseline policy demonstrations
+    for ep in range(1, 35):
         obs, _ = env.reset(seed=5000 + ep)
         done = False
         while not done:
-            action = np.random.randint(0, env.num_songs)
+            u_vec = env.feature_store.get_user_vector_by_id(env.current_user_id)
+            with torch.no_grad():
+                u_t = torch.tensor(u_vec, dtype=torch.float32).unsqueeze(0)
+                u_emb = retrieval_model.user_tower(u_t).squeeze(0).cpu().numpy()
+            top_cand_ids, cand_scores, _ = vector_index.query(u_emb, top_k=100)
+            cand_indices = [env.feature_store.song_id_to_idx[sid] for sid in top_cand_ids]
+
+            cand_probs = np.exp(cand_scores[:20] / 0.1)
+            cand_probs = cand_probs / cand_probs.sum()
+            action = cand_indices[np.random.choice(len(cand_probs), p=cand_probs)]
+
             next_obs, reward, terminated, truncated, _ = env.step(action)
             agent.replay_buffer.push(obs, action, reward, next_obs, float(terminated))
             obs = next_obs
@@ -180,13 +197,14 @@ def train_rl_agents(
             if terminated or truncated:
                 done = True
 
-    logger.info("Warmup complete. Replay buffer size: %d", len(agent.replay_buffer))
+    logger.info("Warmup complete with baseline demonstrations. Replay buffer size: %d", len(agent.replay_buffer))
 
     for ep in range(1, total_episodes + 1):
         obs, info = env.reset(seed=10000 + ep)
         done = False
         ep_return = 0.0
         step_in_ep = 0
+        session_actions = []
 
         while not done:
             # Re-rank among Two-Tower top candidates
@@ -202,8 +220,10 @@ def train_rl_agents(
             action, act_info = agent.select_action(
                 state=obs,
                 candidate_indices=cand_indices,
-                exploration_noise=exp_noise
+                exploration_noise=exp_noise,
+                recent_action_indices=session_actions
             )
+            session_actions.append(action)
 
             next_obs, reward, terminated, truncated, step_info = env.step(action)
             ep_return += reward

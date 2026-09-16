@@ -214,6 +214,82 @@ class RLVisualizer {
       }
     }
   }
+
+  /**
+   * Updates the interactive RL Recommendation & Policy Loop architecture card in real time.
+   */
+  updateRLStateLoop(userState, qDist, lastFeedback, policyMetrics) {
+    if (!userState) return;
+
+    // 1. User & History Node
+    const userIdEl = document.getElementById('node-user-id');
+    const histCountEl = document.getElementById('node-history-count');
+    if (userIdEl) userIdEl.innerText = userState.user_id || 'usr_00002';
+    if (histCountEl) histCountEl.innerText = `${userState.total_interactions || userState.session_length || 0} interactions`;
+
+    // 2. User State (genre, artist, mood, recent songs)
+    const genreEl = document.getElementById('state-genre-val');
+    const artistEl = document.getElementById('state-artist-val');
+    const moodEl = document.getElementById('state-mood-val');
+    const recentEl = document.getElementById('state-recent-val');
+
+    if (genreEl) genreEl.innerText = userState.genre || (userState.genre_affinities ? Object.keys(userState.genre_affinities)[0] : 'Lo-Fi');
+    if (artistEl) artistEl.innerText = userState.artist || (userState.recent_artists && userState.recent_artists[0]) || 'Varied';
+    
+    if (moodEl) {
+      const e = userState.mood?.energy ?? userState.pref_energy ?? 0.5;
+      const v = userState.mood?.valence ?? userState.pref_valence ?? 0.5;
+      moodEl.innerText = `E:${Number(e).toFixed(2)} V:${Number(v).toFixed(2)}`;
+    }
+
+    if (recentEl) {
+      if (userState.recent_songs && userState.recent_songs.length > 0) {
+        const lastSong = userState.recent_songs[userState.recent_songs.length - 1];
+        recentEl.innerText = (lastSong.title || 'Track').substring(0, 12);
+      } else {
+        recentEl.innerText = 'Session Start';
+      }
+    }
+
+    // 3. Candidate Songs & Q-Ranking
+    const topQEl = document.getElementById('node-cand-top-q');
+    if (topQEl && qDist && qDist.length > 0) {
+      topQEl.innerText = `Top Q: +${Number(qDist[0].q_score).toFixed(2)}`;
+    }
+
+    // 4. Action (Recommend Song)
+    const actionTitleEl = document.getElementById('node-action-title');
+    const actionArtistEl = document.getElementById('node-action-artist');
+    if (userState.current_track) {
+      if (actionTitleEl) actionTitleEl.innerText = userState.current_track.title || 'Track';
+      if (actionArtistEl) actionArtistEl.innerText = userState.current_track.artist_name || 'Artist';
+    }
+
+    // 5. Last Feedback & Reward
+    const rewardBadge = document.getElementById('node-last-reward-badge');
+    if (rewardBadge && lastFeedback) {
+      const sign = lastFeedback.reward >= 0 ? '+' : '';
+      rewardBadge.innerHTML = `Latest: <strong>${sign}${Number(lastFeedback.reward).toFixed(2)} R</strong> (${lastFeedback.action_type})`;
+    }
+
+    // 6. Policy Update Status
+    const bufferSizeEl = document.getElementById('loop-buffer-size');
+    const lastUpdateEl = document.getElementById('loop-last-update');
+    const lossDisplayEl = document.getElementById('node-loss-display');
+
+    if (policyMetrics) {
+      if (bufferSizeEl && policyMetrics.buffer_size !== undefined) {
+        bufferSizeEl.innerText = `${policyMetrics.buffer_size} transitions`;
+      }
+      if (lastUpdateEl) {
+        lastUpdateEl.innerText = policyMetrics.policy_updated ? 'Step Optimized' : 'Buffering';
+        lastUpdateEl.style.color = policyMetrics.policy_updated ? 'var(--accent-green-bright)' : 'var(--text-secondary)';
+      }
+      if (lossDisplayEl && policyMetrics.loss_info && policyMetrics.loss_info.critic_loss !== undefined) {
+        lossDisplayEl.innerText = `Critic Loss: ${Number(policyMetrics.loss_info.critic_loss).toFixed(4)}`;
+      }
+    }
+  }
 }
 
 window.rlVisualizer = new RLVisualizer();

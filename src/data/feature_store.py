@@ -75,10 +75,10 @@ class FeatureStore:
 
     def load_and_index(self, users_df: pd.DataFrame, songs_df: pd.DataFrame):
         """Loads and precomputes dense embedding matrices for users and songs."""
-        self.users_df = users_df.copy()
-        self.songs_df = songs_df.copy()
+        self.users_df = users_df.drop_duplicates(subset=["user_id"]).reset_index(drop=True)
+        self.songs_df = songs_df.drop_duplicates(subset=["song_id"]).reset_index(drop=True)
 
-        # Build IDs
+        # Build contiguous 0-indexed ID mappings with no holes
         self.song_id_to_idx = {sid: idx for idx, sid in enumerate(self.songs_df["song_id"])}
         self.idx_to_song_id = {idx: sid for sid, idx in self.song_id_to_idx.items()}
         self.user_id_to_idx = {uid: idx for idx, uid in enumerate(self.users_df["user_id"])}

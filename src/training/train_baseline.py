@@ -8,6 +8,7 @@ Evaluates on validation split and saves weights for candidate generation.
 import os
 import json
 import logging
+import random
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class InteractionDataset(Dataset):
-    """PyTorch Dataset yielding (user_feature_vec, positive_song_feature_vec)."""
+    """PyTorch Dataset yielding (user_feature_vec, positive_song_feature_vec, negative_song_feature_vec)."""
 
     def __init__(self, events_df: pd.DataFrame, feature_store: FeatureStore):
         # Filter for positive / satisfaction interactions (repeat target == 1 or no_skip)
@@ -30,8 +31,22 @@ class InteractionDataset(Dataset):
         if len(pos_df) < 100:
             pos_df = events_df.copy()
 
+        # Build lookup of hard negatives per user (songs skipped early)
+        neg_df = events_df[events_df["skip_type"] == "skip_early"]
+        user_to_negs = neg_df.groupby("user_id")["song_id"].apply(list).to_dict()
+
+        all_song_ids = list(feature_store.song_id_to_idx.keys())
+
         self.user_ids = pos_df["user_id"].tolist()
-        self.song_ids = pos_df["song_id"].tolist()
+        self.pos_song_ids = pos_df["song_id"].tolist()
+        self.neg_song_ids = []
+
+        for u_id in self.user_ids:
+            if u_id in user_to_negs and len(user_to_negs[u_id]) > 0:
+                self.neg_song_ids.append(random.choice(user_to_negs[u_id]))
+            else:
+                self.neg_song_ids.append(random.choice(all_song_ids))
+
         self.feature_store = feature_store
 
     def __len__(self):
@@ -39,10 +54,16 @@ class InteractionDataset(Dataset):
 
     def __getitem__(self, idx):
         u_id = self.user_ids[idx]
-        s_id = self.song_ids[idx]
+        pos_id = self.pos_song_ids[idx]
+        neg_id = self.neg_song_ids[idx]
         u_vec = self.feature_store.get_user_vector_by_id(u_id)
-        s_vec = self.feature_store.get_song_vector_by_id(s_id)
-        return torch.tensor(u_vec, dtype=torch.float32), torch.tensor(s_vec, dtype=torch.float32)
+        pos_vec = self.feature_store.get_song_vector_by_id(pos_id)
+        neg_vec = self.feature_store.get_song_vector_by_id(neg_id)
+        return (
+            torch.tensor(u_vec, dtype=torch.float32),
+            torch.tensor(pos_vec, dtype=torch.float32),
+            torch.tensor(neg_vec, dtype=torch.float32)
+        )
 
 
 def train_two_tower(
@@ -51,7 +72,7 @@ def train_two_tower(
     embed_dim: int = 64,
     batch_size: int = 256,
     lr: float = 1e-3,
-    epochs: int = 10
+    epochs: int = 12
 ) -> TwoTowerModel:
     """Trains Two-Tower retrieval model and saves checkpoints."""
     p_dir = Path(processed_dir)
@@ -79,16 +100,16 @@ def train_two_tower(
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-4)
 
-    logger.info("Starting Two-Tower training: %d epochs, %d train batches...", epochs, len(train_loader))
+    logger.info("Starting Two-Tower training with hard-negative contrastive loss: %d epochs, %d train batches...", epochs, len(train_loader))
 
     best_val_loss = float("inf")
 
     for epoch in range(1, epochs + 1):
         model.train()
         train_loss = 0.0
-        for u_batch, s_batch in train_loader:
+        for u_batch, pos_s_batch, neg_s_batch in train_loader:
             optimizer.zero_grad()
-            loss = model.compute_loss(u_batch, s_batch)
+            loss = model.compute_loss(u_batch, pos_s_batch, neg_song_features=neg_s_batch)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
@@ -99,8 +120,8 @@ def train_two_tower(
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for u_batch, s_batch in val_loader:
-                loss = model.compute_loss(u_batch, s_batch)
+            for u_batch, pos_s_batch, neg_s_batch in val_loader:
+                loss = model.compute_loss(u_batch, pos_s_batch, neg_song_features=neg_s_batch)
                 val_loss += loss.item()
         val_loss /= max(1, len(val_loader))
 

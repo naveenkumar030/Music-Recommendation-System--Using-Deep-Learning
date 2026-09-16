@@ -47,36 +47,64 @@ class WolpertingerActor(nn.Module):
 
 
 class WolpertingerCritic(nn.Module):
-    """Critic network Q(s, a) estimating expected return for state-action pair."""
+    """Twin-Critic network Q1(s, a) and Q2(s, a) to mitigate Q-value overestimation bias."""
 
     def __init__(self, state_dim: int, action_embed_dim: int = 64, hidden_layers: List[int] = [256, 128]):
         super().__init__()
-        layers = []
+        # Critic 1
+        layers1 = []
         curr_dim = state_dim + action_embed_dim
         for h_dim in hidden_layers:
-            layers.extend([
+            layers1.extend([
                 nn.Linear(curr_dim, h_dim),
                 nn.LayerNorm(h_dim),
                 nn.ReLU()
             ])
             curr_dim = h_dim
-        layers.append(nn.Linear(curr_dim, 1))
-        self.net = nn.Sequential(*layers)
+        layers1.append(nn.Linear(curr_dim, 1))
+        self.q1_net = nn.Sequential(*layers1)
+
+        # Critic 2
+        layers2 = []
+        curr_dim = state_dim + action_embed_dim
+        for h_dim in hidden_layers:
+            layers2.extend([
+                nn.Linear(curr_dim, h_dim),
+                nn.LayerNorm(h_dim),
+                nn.ReLU()
+            ])
+            curr_dim = h_dim
+        layers2.append(nn.Linear(curr_dim, 1))
+        self.q2_net = nn.Sequential(*layers2)
 
     def forward(self, state: torch.Tensor, action_embed: torch.Tensor) -> torch.Tensor:
-        """
-        state: (Batch, state_dim) or (Batch, 1, state_dim)
-        action_embed: (Batch, action_dim) or (Batch, K, action_dim)
-        """
+        """Default forward returns Q1 for backward compatibility."""
         if action_embed.dim() == 3:
             B, K, A_dim = action_embed.shape
             state_expanded = state.unsqueeze(1).expand(B, K, -1)
             cat_input = torch.cat([state_expanded, action_embed], dim=-1)
-            q_vals = self.net(cat_input)  # (B, K, 1)
-            return q_vals.squeeze(-1)      # (B, K)
+            return self.q1_net(cat_input).squeeze(-1)
         else:
             cat_input = torch.cat([state, action_embed], dim=-1)
-            return self.net(cat_input)     # (B, 1)
+            return self.q1_net(cat_input)
+
+    def forward_both(self, state: torch.Tensor, action_embed: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Returns predictions from both Q1 and Q2 heads."""
+        if action_embed.dim() == 3:
+            B, K, A_dim = action_embed.shape
+            state_expanded = state.unsqueeze(1).expand(B, K, -1)
+            cat_input = torch.cat([state_expanded, action_embed], dim=-1)
+            q1 = self.q1_net(cat_input).squeeze(-1)
+            q2 = self.q2_net(cat_input).squeeze(-1)
+            return q1, q2
+        else:
+            cat_input = torch.cat([state, action_embed], dim=-1)
+            return self.q1_net(cat_input), self.q2_net(cat_input)
+
+    def q_min(self, state: torch.Tensor, action_embed: torch.Tensor) -> torch.Tensor:
+        """Returns conservative minimum of Q1 and Q2 to prevent overestimation."""
+        q1, q2 = self.forward_both(state, action_embed)
+        return torch.min(q1, q2)
 
 
 class ReplayBuffer:
@@ -105,7 +133,7 @@ class ReplayBuffer:
 
 class WolpertingerAgent:
     """
-    Wolpertinger Actor-Critic Re-ranker Policy.
+    Wolpertinger Actor-Critic Re-ranker Policy with Twin-Critic stabilization.
     """
 
     def __init__(
@@ -159,13 +187,14 @@ class WolpertingerAgent:
         self,
         state: np.ndarray,
         candidate_indices: Optional[List[int]] = None,
-        exploration_noise: float = 0.0
+        exploration_noise: float = 0.0,
+        recent_action_indices: Optional[List[int]] = None,
     ) -> Tuple[int, Dict[str, Any]]:
         """
         Selects best action using Wolpertinger policy:
         1. Proto-action from actor: a_proto = Actor(state)
         2. k-NN lookup among candidate songs: N_k(a_proto)
-        3. Critic scores: a* = argmax_{a in N_k} Critic(state, a)
+        3. Critic scores: a* = argmax_{a in N_k} Q_min(state, a) - fatigue_penalty
         """
         self.actor.eval()
         self.critic.eval()
@@ -193,12 +222,21 @@ class WolpertingerAgent:
                 _, top_idx = torch.topk(sims, k=k)
                 chosen_candidate_indices = [i.item() for i in top_idx]
 
-            # Critic scores among the k candidates
+            # Twin-critic scoring: use conservative q_min among the k candidates
             k_cand_tensor = torch.tensor(chosen_candidate_indices, dtype=torch.int64, device=self.device)
             k_embeddings = self.song_embeddings[k_cand_tensor].unsqueeze(0)  # (1, k, d)
 
-            q_scores = self.critic(s_tensor, k_embeddings).squeeze(0)  # (k,)
-            best_k_idx = torch.argmax(q_scores).item()
+            q_scores = self.critic.q_min(s_tensor, k_embeddings).squeeze(0)  # (k,)
+
+            # Apply repetition fatigue guardrail if recent actions provided
+            q_adjusted = q_scores.clone()
+            if recent_action_indices:
+                recent_set = set(recent_action_indices[-3:])
+                for idx_k, c_idx in enumerate(chosen_candidate_indices):
+                    if c_idx in recent_set:
+                        q_adjusted[idx_k] -= 0.35
+
+            best_k_idx = torch.argmax(q_adjusted).item()
             best_action_idx = chosen_candidate_indices[best_k_idx]
             best_q_val = q_scores[best_k_idx].item()
 
@@ -210,11 +248,12 @@ class WolpertingerAgent:
         }
 
     def train_step(self, batch_size: int = 128) -> Dict[str, float]:
-        """Performs one gradient update step for Critic and Actor."""
-        if len(self.replay_buffer) < batch_size:
+        """Performs one gradient update step with Twin-Critic and manifold regularization."""
+        if len(self.replay_buffer) < 4:
             return {}
 
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample(batch_size)
+        effective_batch_size = min(batch_size, len(self.replay_buffer))
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample(effective_batch_size)
 
         s_t = torch.tensor(states, dtype=torch.float32, device=self.device)
         a_t = torch.tensor(actions, dtype=torch.int64, device=self.device)
@@ -225,31 +264,44 @@ class WolpertingerAgent:
         # Action embeddings of observed actions
         act_embeddings = self.song_embeddings[a_t]  # (B, d)
 
-        # 1. Critic Update:
+        # 1. Critic Update (Clipped Double Q / Twin-Critic):
         with torch.no_grad():
             next_proto = self.actor_target(s_next)  # (B, d)
-            # Use target critic to evaluate target proto-action
-            next_q = self.critic_target(s_next, next_proto)  # (B, 1)
+            sims_next = torch.matmul(next_proto, self.song_embeddings.T)  # (B, N)
+            k = min(self.k_candidates, self.num_songs)
+            _, top_k_idx = torch.topk(sims_next, k=k, dim=1)  # (B, k)
+            k_embs_next = self.song_embeddings[top_k_idx]      # (B, k, d)
+            
+            # Score with target twin critic and take min across heads
+            q1_k_next, q2_k_next = self.critic_target.forward_both(s_next, k_embs_next)  # (B, k), (B, k)
+            min_q_k_next = torch.min(q1_k_next, q2_k_next)                              # (B, k)
+            next_q = min_q_k_next.max(dim=1, keepdim=True).values                      # (B, 1)
             target_q = r_t + (1.0 - d_t) * self.gamma * next_q
 
-        current_q = self.critic(s_t, act_embeddings)
-        critic_loss = F.mse_loss(current_q, target_q)
+        q1_curr, q2_curr = self.critic.forward_both(s_t, act_embeddings)
+        critic_loss = F.mse_loss(q1_curr, target_q) + F.mse_loss(q2_curr, target_q)
 
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.critic.parameters(), 1.0)
         self.critic_optimizer.step()
 
-        # 2. Actor Update (Policy Gradient: maximize Q(s, Actor(s))):
+        # 2. Actor Update (Policy Gradient + Manifold Regularization):
         pred_proto = self.actor(s_t)
-        actor_loss = -self.critic(s_t, pred_proto).mean()
+        policy_loss = -self.critic.forward(s_t, pred_proto).mean()
+
+        # Manifold regularization: penalize distance from proto-actions to closest catalog vectors
+        manifold_sim = torch.matmul(pred_proto, self.song_embeddings.T).max(dim=1).values
+        manifold_loss = (1.0 - manifold_sim).mean()
+
+        actor_loss = policy_loss + 0.1 * manifold_loss
 
         self.actor_optimizer.zero_grad()
         actor_loss.backward()
         torch.nn.utils.clip_grad_norm_(self.actor.parameters(), 1.0)
         self.actor_optimizer.step()
 
-        # 3. Soft Target Updates
+        # 3. Soft Target Updates (Polyak)
         for p, p_targ in zip(self.actor.parameters(), self.actor_target.parameters()):
             p_targ.data.copy_(self.tau * p.data + (1.0 - self.tau) * p_targ.data)
         for p, p_targ in zip(self.critic.parameters(), self.critic_target.parameters()):
@@ -258,7 +310,7 @@ class WolpertingerAgent:
         return {
             "critic_loss": critic_loss.item(),
             "actor_loss": actor_loss.item(),
-            "mean_q": current_q.mean().item()
+            "mean_q": q1_curr.mean().item()
         }
 
     def save(self, path_prefix: str):

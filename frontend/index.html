@@ -12,6 +12,14 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="dark-theme">
+  <!-- Atmospheric Glassmorphism Ambient Glow Orbs -->
+  <div class="ambient-glow-container" aria-hidden="true">
+    <div class="ambient-orb orb-1"></div>
+    <div class="ambient-orb orb-2"></div>
+    <div class="ambient-orb orb-3"></div>
+    <div class="ambient-orb orb-4"></div>
+  </div>
+
   <!-- Hidden HTML5 Audio Element for OpenSpot Direct HQ Streams -->
   <audio id="html5-audio-element" preload="auto"></audio>
 
@@ -32,11 +40,17 @@
       </div>
 
       <nav class="nav-menu">
-        <button class="nav-item active" data-tab="player-tab" id="nav-player">
-          <i class="fa-solid fa-circle-play"></i> <span>Live Player Studio</span>
+        <button class="nav-item active" data-tab="home-tab" id="nav-home">
+          <i class="fa-solid fa-house"></i> <span>Home</span>
         </button>
         <button class="nav-item" data-tab="openspot-tab" id="nav-openspot">
-          <i class="fa-solid fa-cloud-arrow-down"></i> <span>OpenSpot Music Hub</span>
+          <i class="fa-solid fa-magnifying-glass"></i> <span>Search & Browse</span>
+        </button>
+        <button class="nav-item" data-tab="library-tab" id="nav-library">
+          <i class="fa-solid fa-lines-leaning"></i> <span>Your Library</span>
+        </button>
+        <button class="nav-item" data-tab="player-tab" id="nav-player">
+          <i class="fa-solid fa-compact-disc"></i> <span>Now Playing Studio</span>
         </button>
         <button class="nav-item" data-tab="brain-tab" id="nav-brain">
           <i class="fa-solid fa-atom"></i> <span>RL Brain & State</span>
@@ -45,12 +59,50 @@
           <i class="fa-solid fa-chart-line"></i> <span>A/B Simulation Lab</span>
         </button>
         <button class="nav-item" data-tab="catalog-tab" id="nav-catalog">
-          <i class="fa-solid fa-compact-disc"></i> <span>Song Catalog</span>
+          <i class="fa-solid fa-database"></i> <span>Catalog & Index</span>
         </button>
         <button class="nav-item" data-tab="report-tab" id="nav-report">
           <i class="fa-solid fa-shield-halved"></i> <span>Guardrails & OPE</span>
         </button>
       </nav>
+
+      <!-- Spotify Library Quick Playlists -->
+      <div class="spotify-quick-library">
+        <div class="quick-lib-header">
+          <span><i class="fa-solid fa-book-bookmark"></i> Playlists</span>
+          <button class="btn-icon-tiny" id="btn-create-playlist" title="Create Playlist"><i class="fa-solid fa-plus"></i></button>
+        </div>
+        <div class="quick-playlist-items">
+          <div class="quick-pl-item active" data-playlist="liked" onclick="window.app.switchTab('library-tab')">
+            <div class="pl-icon-gradient"><i class="fa-solid fa-heart"></i></div>
+            <div class="pl-meta">
+              <span class="pl-name">Liked Songs</span>
+              <span class="pl-sub" id="sidebar-liked-count">Auto-Curated • Playlist</span>
+            </div>
+          </div>
+          <div class="quick-pl-item" data-playlist="discover" onclick="window.app.switchTab('home-tab')">
+            <div class="pl-icon-gradient discover"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+            <div class="pl-meta">
+              <span class="pl-name">Discover Weekly</span>
+              <span class="pl-sub">AI RL Curated</span>
+            </div>
+          </div>
+          <div class="quick-pl-item" data-playlist="daily1" onclick="window.app.playDailyMix(1)">
+            <div class="pl-icon-gradient daily"><i class="fa-solid fa-bolt"></i></div>
+            <div class="pl-meta">
+              <span class="pl-name">Daily Mix 1</span>
+              <span class="pl-sub">Lo-Fi & Chillhop</span>
+            </div>
+          </div>
+          <div class="quick-pl-item" data-playlist="daily2" onclick="window.app.playDailyMix(2)">
+            <div class="pl-icon-gradient radar"><i class="fa-solid fa-tower-broadcast"></i></div>
+            <div class="pl-meta">
+              <span class="pl-name">Release Radar</span>
+              <span class="pl-sub">New OpenSpot Hits</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Active Listener Persona Card -->
       <div class="persona-card">
@@ -83,33 +135,44 @@
     <main class="main-content">
       <!-- Top Bar Header -->
       <header class="top-bar">
+        <div class="top-bar-left">
+          <div class="nav-history-btns">
+            <button class="btn-history-nav" id="btn-nav-back" title="Go Back"><i class="fa-solid fa-chevron-left"></i></button>
+            <button class="btn-history-nav" id="btn-nav-forward" title="Go Forward"><i class="fa-solid fa-chevron-right"></i></button>
+          </div>
+          <div class="spotify-global-search">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="global-search-input" placeholder="What do you want to play? (Artists, songs, genres)..." autocomplete="off">
+          </div>
+        </div>
+
         <div class="model-selector-bar">
-          <span class="label">Recommendation Policy:</span>
+          <span class="label">Algorithm:</span>
           <div class="toggle-group">
-            <button class="toggle-btn active" data-model="wolpertinger" id="btn-model-rl">
-              <i class="fa-solid fa-brain"></i> Wolpertinger RL
+            <button class="toggle-btn active" data-model="wolpertinger" id="btn-model-rl" title="Wolpertinger Deep RL Actor-Critic Policy">
+              <i class="fa-solid fa-brain"></i> RL Smart Shuffle
             </button>
-            <button class="toggle-btn" data-model="baseline" id="btn-model-baseline">
-              <i class="fa-solid fa-tower-broadcast"></i> Two-Tower Baseline
+            <button class="toggle-btn" data-model="baseline" id="btn-model-baseline" title="Two-Tower Matrix Factorization Baseline">
+              <i class="fa-solid fa-tower-broadcast"></i> Two-Tower
             </button>
-            <button class="toggle-btn" data-model="random" id="btn-model-random">
-              <i class="fa-solid fa-shuffle"></i> Random Exploration
+            <button class="toggle-btn" data-model="random" id="btn-model-random" title="Random Exploration">
+              <i class="fa-solid fa-shuffle"></i> Random
             </button>
           </div>
         </div>
 
         <div class="session-counters">
-          <div class="counter-badge">
+          <div class="counter-badge" title="Episode step in session">
             <i class="fa-solid fa-fire"></i> Step: <strong id="stat-session-step">0</strong>
           </div>
-          <div class="counter-badge success">
-            <i class="fa-solid fa-heart"></i> Likes: <strong id="stat-session-likes">0</strong>
+          <div class="counter-badge success" title="Liked tracks">
+            <i class="fa-solid fa-heart"></i> <strong id="stat-session-likes">0</strong>
           </div>
-          <div class="counter-badge warning">
-            <i class="fa-solid fa-forward-step"></i> Skips: <strong id="stat-session-skips">0</strong>
+          <div class="counter-badge warning" title="Skipped tracks">
+            <i class="fa-solid fa-forward-step"></i> <strong id="stat-session-skips">0</strong>
           </div>
-          <div class="counter-badge reward">
-            <i class="fa-solid fa-trophy"></i> Reward: <strong id="stat-session-reward">0.00</strong>
+          <div class="counter-badge reward" title="Cumulative RL reward return">
+            <i class="fa-solid fa-trophy"></i> Return: <strong id="stat-session-reward">0.00</strong>
           </div>
           <div class="counter-badge context-counter" id="context-badge" title="Current listening context (time of day)">
             ☕ Morning Focus
@@ -117,8 +180,143 @@
         </div>
       </header>
 
+      <!-- TAB 0: Spotify Home / Made For You -->
+      <section id="home-tab" class="tab-pane active">
+        <!-- Dynamic Spotify Hero Banner -->
+        <div class="spotify-home-hero glass-panel">
+          <div class="home-greeting-row">
+            <div>
+              <h1 class="home-greeting-title" id="home-greeting-title">Good afternoon</h1>
+              <p class="home-greeting-sub">Curated recommendations powered by Wolpertinger Deep Reinforcement Learning.</p>
+            </div>
+            <div class="home-profile-badge" id="home-profile-badge">
+              <i class="fa-solid fa-headphones"></i>
+              <span id="home-profile-name">Lo-Fi Coder Profile</span>
+            </div>
+          </div>
+
+          <!-- Quick 6-Grid Mix Tiles -->
+          <div class="spotify-quick-grid">
+            <div class="quick-mix-card" onclick="window.app.switchTab('library-tab')">
+              <div class="mix-thumb liked-gradient"><i class="fa-solid fa-heart"></i></div>
+              <span class="mix-title">Liked Songs</span>
+              <button class="mix-play-btn" title="Play Liked Songs"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div class="quick-mix-card" onclick="window.app.switchTab('home-tab'); window.app.fetchNextRecommendation();">
+              <div class="mix-thumb discover-gradient"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+              <span class="mix-title">Discover Weekly (AI RL)</span>
+              <button class="mix-play-btn" title="Play Discover Weekly"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div class="quick-mix-card" onclick="window.app.playDailyMix(1)">
+              <div class="mix-thumb daily-gradient"><i class="fa-solid fa-coffee"></i></div>
+              <span class="mix-title">Daily Mix 1: Chill Study</span>
+              <button class="mix-play-btn" title="Play Daily Mix"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div class="quick-mix-card" onclick="window.app.playDailyMix(2)">
+              <div class="mix-thumb radar-gradient"><i class="fa-solid fa-bolt"></i></div>
+              <span class="mix-title">Release Radar (OpenSpot)</span>
+              <button class="mix-play-btn" title="Play Release Radar"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div class="quick-mix-card" onclick="window.app.switchTab('brain-tab')">
+              <div class="mix-thumb mood-gradient"><i class="fa-solid fa-atom"></i></div>
+              <span class="mix-title">Acoustic Centroid Mix</span>
+              <button class="mix-play-btn" title="Inspect RL Brain"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div class="quick-mix-card" onclick="window.app.switchTab('openspot-tab')">
+              <div class="mix-thumb chart-gradient"><i class="fa-solid fa-chart-simple"></i></div>
+              <span class="mix-title">Top 50 Global Hits</span>
+              <button class="mix-play-btn" title="Browse Charts"><i class="fa-solid fa-play"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shelf 1: Made For You (Wolpertinger RL Slate) -->
+        <div class="spotify-shelf-section">
+          <div class="shelf-header">
+            <div class="shelf-title-group">
+              <h2 class="shelf-title">Made For You</h2>
+              <span class="shelf-subtitle">Top-ranked tracks scored by the Wolpertinger Actor-Critic RL policy.</span>
+            </div>
+            <button class="shelf-see-all" onclick="window.app.switchTab('player-tab')">View in Player Studio →</button>
+          </div>
+          <div class="spotify-cards-shelf" id="shelf-made-for-you">
+            <!-- Dynamically populated with Spotify cards -->
+          </div>
+        </div>
+
+        <!-- Shelf 2: Discover Weekly (Latent Acoustic Exploration) -->
+        <div class="spotify-shelf-section">
+          <div class="shelf-header">
+            <div class="shelf-title-group">
+              <h2 class="shelf-title">Discover Weekly</h2>
+              <span class="shelf-subtitle">High-novelty latent space discovery tracks with zero-fatigue exploration.</span>
+            </div>
+            <button class="shelf-see-all" onclick="window.app.switchTab('catalog-tab')">Explore Full Catalog →</button>
+          </div>
+          <div class="spotify-cards-shelf" id="shelf-discover-weekly">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Shelf 3: Trending Hits on OpenSpot -->
+        <div class="spotify-shelf-section">
+          <div class="shelf-header">
+            <div class="shelf-title-group">
+              <h2 class="shelf-title">Trending Hits on OpenSpot</h2>
+              <span class="shelf-subtitle">Popular tracks streamed in high-fidelity 320kbps audio.</span>
+            </div>
+            <button class="shelf-see-all" onclick="window.app.switchTab('openspot-tab')">Browse OpenSpot Hub →</button>
+          </div>
+          <div class="spotify-cards-shelf" id="shelf-trending-hits">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Your Library -->
+      <section id="library-tab" class="tab-pane">
+        <div class="library-hero glass-panel">
+          <div class="library-liked-banner">
+            <div class="liked-hero-art">
+              <i class="fa-solid fa-heart"></i>
+            </div>
+            <div class="liked-hero-info">
+              <span class="liked-tag">PLAYLIST</span>
+              <h1 class="liked-hero-title">Liked Songs</h1>
+              <p class="liked-hero-desc">Every song you like delivers +1.0 RL reward and trains your personalized policy in real time.</p>
+              <div class="liked-hero-stats">
+                <span id="lib-user-label">Lo-Fi Coder</span> • <strong id="lib-liked-count">0 songs</strong> • <span id="lib-session-status">Active Session</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="library-action-bar">
+            <button class="btn-spotify-play-large" id="btn-lib-play-all" title="Play All Liked Songs">
+              <i class="fa-solid fa-play"></i>
+            </button>
+            <button class="btn-spotify-icon" title="Smart Shuffle"><i class="fa-solid fa-shuffle"></i></button>
+            <button class="btn-spotify-icon" id="btn-lib-refresh" title="Refresh Library"><i class="fa-solid fa-arrows-rotate"></i></button>
+          </div>
+        </div>
+
+        <!-- Liked Songs Table List -->
+        <div class="library-tracks-container glass-panel" style="margin-top: 20px;">
+          <div class="library-table-header">
+            <span class="th-num">#</span>
+            <span class="th-title">Title</span>
+            <span class="th-artist">Artist</span>
+            <span class="th-genre">Genre</span>
+            <span class="th-dur"><i class="fa-regular fa-clock"></i></span>
+            <span class="th-actions">Actions</span>
+          </div>
+          <div class="library-tracks-list" id="library-tracks-list">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </section>
+
       <!-- TAB 1: Live Player Studio -->
-      <section id="player-tab" class="tab-pane active">
+      <section id="player-tab" class="tab-pane">
         <div class="player-grid">
           <!-- Main Vinyl & Player Card -->
           <div class="player-card glass-panel">
@@ -132,7 +330,10 @@
             </div>
 
             <div class="track-details">
-              <span class="track-genre-badge" id="current-genre">Lo-Fi / Chillhop</span>
+              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
+                <span class="track-genre-badge" id="current-genre">Lo-Fi / Chillhop</span>
+                <span id="audio-mode-tag" title="Active recommendation pipeline"><i class="fa-solid fa-tower-cell"></i> Hybrid Mode</span>
+              </div>
               <h1 class="track-title" id="current-title">Levitating</h1>
               <h3 class="track-artist" id="current-artist">Dua Lipa</h3>
               
@@ -176,20 +377,20 @@
               </div>
 
               <div class="feedback-actions">
-                <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+2.5 reward)">
-                  <i class="fa-solid fa-heart"></i> Like
+                <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+1.0 RL Reward)">
+                  <i class="fa-solid fa-heart"></i> Like <span class="reward-tag">+1.0</span>
                 </button>
-                <button class="btn-action btn-save" id="btn-playlist-save" title="Save to Playlist (+1.5 reward)">
-                  <i class="fa-solid fa-bookmark"></i> Save
+                <button class="btn-action btn-full" id="btn-feedback-full" title="Listen / Complete track (+0.5 RL Reward)">
+                  <i class="fa-solid fa-circle-check"></i> Listen <span class="reward-tag">+0.5</span>
                 </button>
-                <button class="btn-action btn-full" id="btn-feedback-full" title="Listen Full Song (+1.0 reward)">
-                  <i class="fa-solid fa-circle-check"></i> Complete Listen
+                <button class="btn-action btn-skip" id="btn-feedback-skip" title="Skip track (-1.0 RL Penalty)">
+                  <i class="fa-solid fa-forward-step"></i> Skip <span class="reward-tag">-1.0</span>
                 </button>
-                <button class="btn-action btn-skip" id="btn-feedback-skip" title="Skip early (-1.0 reward)">
-                  <i class="fa-solid fa-forward-step"></i> Skip Track
+                <button class="btn-action btn-save" id="btn-playlist-save" title="Save to Playlist (+0.5 RL Reward)">
+                  <i class="fa-solid fa-bookmark"></i> Save <span class="reward-tag">+0.5</span>
                 </button>
-                <button class="btn-action btn-dislike" id="btn-feedback-dislike" title="Dislike (-2.0 reward)">
-                  <i class="fa-solid fa-thumbs-down"></i> Dislike
+                <button class="btn-action btn-dislike" id="btn-feedback-dislike" title="Dislike track (-1.5 RL Penalty)">
+                  <i class="fa-solid fa-thumbs-down"></i> Dislike <span class="reward-tag">-1.5</span>
                 </button>
               </div>
             </div>
@@ -413,7 +614,24 @@
               <span class="badge-tag" id="openspot-results-count">0 tracks</span>
             </div>
           </div>
-          
+
+          <!-- Bulk-action toolbar (shown once results load) -->
+          <div class="openspot-bulk-bar" id="openspot-bulk-bar" style="display:none;">
+            <span class="openspot-sel-count" id="openspot-sel-count">0 tracks</span>
+            <button class="btn-small" onclick="window.app.toggleSelectAllOpenSpot()" title="Select / deselect all visible tracks">
+              <i class="fa-solid fa-check-double"></i> Select All
+            </button>
+            <button class="btn-small" id="btn-import-selected" onclick="window.app.importSelectedOpenSpot()" disabled title="Batch-import selected tracks into RL catalog">
+              <i class="fa-solid fa-brain"></i> Import Selected
+            </button>
+            <button class="btn-small" onclick="window.app.addAllOpenSpotToQueue()" title="Add every visible track to the player queue">
+              <i class="fa-solid fa-list-music"></i> Add All to Queue
+            </button>
+            <button class="btn-small btn-primary" onclick="window.app.playAllOpenSpot()" title="Play first track and queue the rest">
+              <i class="fa-solid fa-play"></i> Play All
+            </button>
+          </div>
+
           <div class="openspot-grid" id="openspot-results-grid">
             <div class="openspot-empty-state">
               <i class="fa-solid fa-compact-disc fa-spin"></i>
@@ -425,6 +643,104 @@
 
       <!-- TAB 2: RL Brain & State Inspector -->
       <section id="brain-tab" class="tab-pane">
+        <!-- Full RL Closed-Loop Recommendation Architecture Panel -->
+        <div class="rl-loop-container glass-panel">
+          <div class="panel-header">
+            <div class="title-with-badge">
+              <h3><i class="fa-solid fa-arrows-spin"></i> RL Recommendation Closed-Loop Architecture</h3>
+              <span class="badge-tag live-tag" id="rl-loop-status-badge"><i class="fa-solid fa-circle-dot"></i> Real-Time Policy Loop</span>
+            </div>
+            <div class="rl-loop-stats" id="rl-loop-stats-summary">
+              <span class="rl-stat-chip"><i class="fa-solid fa-microchip"></i> Policy: <strong id="loop-policy-status">Online Active</strong></span>
+              <span class="rl-stat-chip"><i class="fa-solid fa-database"></i> Replay Buffer: <strong id="loop-buffer-size">--</strong></span>
+              <span class="rl-stat-chip"><i class="fa-solid fa-bolt"></i> Last Update: <strong id="loop-last-update">Idle</strong></span>
+            </div>
+          </div>
+
+          <!-- Interactive Node Pipeline Flow -->
+          <div class="rl-pipeline-grid">
+            <!-- Node 1: User & Listening History -->
+            <div class="rl-node-card" id="node-user-history">
+              <div class="node-badge">1. Input</div>
+              <div class="node-icon"><i class="fa-solid fa-user"></i></div>
+              <div class="node-title">User & History</div>
+              <div class="node-detail" id="node-user-history-detail">
+                <span id="node-user-id">usr_00002</span>
+                <span class="sub-text" id="node-history-count">0 listening events</span>
+              </div>
+            </div>
+
+            <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+
+            <!-- Node 2: User State (genre, artist, mood, recent songs) -->
+            <div class="rl-node-card highlight" id="node-user-state">
+              <div class="node-badge">2. User State</div>
+              <div class="node-icon"><i class="fa-solid fa-brain"></i></div>
+              <div class="node-title">MDP State $s_t$</div>
+              <div class="node-detail">
+                <div class="state-subfield"><span><i class="fa-solid fa-music"></i> Genre:</span> <b id="state-genre-val">Lo-Fi</b></div>
+                <div class="state-subfield"><span><i class="fa-solid fa-microphone"></i> Artist:</span> <b id="state-artist-val">--</b></div>
+                <div class="state-subfield"><span><i class="fa-solid fa-face-smile"></i> Mood:</span> <b id="state-mood-val">E:0.35 V:0.45</b></div>
+                <div class="state-subfield"><span><i class="fa-solid fa-clock-rotate-left"></i> Recent:</span> <b id="state-recent-val">--</b></div>
+              </div>
+            </div>
+
+            <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+
+            <!-- Node 3: RL Recommendation & Candidate Songs -->
+            <div class="rl-node-card" id="node-candidates">
+              <div class="node-badge">3. RL Scoring</div>
+              <div class="node-icon"><i class="fa-solid fa-network-wired"></i></div>
+              <div class="node-title">Candidate Songs</div>
+              <div class="node-detail" id="node-cands-detail">
+                <span class="cand-badge"><i class="fa-solid fa-layer-group"></i> 50 Shortlist</span>
+                <span class="sub-text" id="node-cand-top-q">Top Q: +2.85</span>
+              </div>
+            </div>
+
+            <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+
+            <!-- Node 4: ACTION Recommend Song -->
+            <div class="rl-node-card" id="node-action">
+              <div class="node-badge">4. Action $a_t$</div>
+              <div class="node-icon"><i class="fa-solid fa-play"></i></div>
+              <div class="node-title">Recommend Song</div>
+              <div class="node-detail" id="node-action-detail">
+                <b id="node-action-title">Levitating</b>
+                <span class="sub-text" id="node-action-artist">Dua Lipa</span>
+              </div>
+            </div>
+
+            <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+
+            <!-- Node 5: User Interaction & Reward Matrix -->
+            <div class="rl-node-card" id="node-interaction">
+              <div class="node-badge">5. Interaction & Reward</div>
+              <div class="node-icon"><i class="fa-solid fa-award"></i></div>
+              <div class="node-title">User Feedback</div>
+              <div class="reward-matrix-chips">
+                <span class="r-chip like" title="Like Action"><i class="fa-solid fa-heart"></i> Like <b>+1.0</b></span>
+                <span class="r-chip listen" title="Listen Action"><i class="fa-solid fa-check"></i> Listen <b>+0.5</b></span>
+                <span class="r-chip skip" title="Skip Action"><i class="fa-solid fa-forward-step"></i> Skip <b>-1.0</b></span>
+              </div>
+              <div class="last-reward-badge" id="node-last-reward-badge">Latest: <strong>+0.00 R</strong></div>
+            </div>
+
+            <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
+
+            <!-- Node 6: Policy Update -->
+            <div class="rl-node-card success" id="node-policy-update">
+              <div class="node-badge">6. Optimize</div>
+              <div class="node-icon"><i class="fa-solid fa-sliders"></i></div>
+              <div class="node-title">Update Policy</div>
+              <div class="node-detail">
+                <span class="sub-text" id="node-loss-display">TD-Learning Step</span>
+                <b id="node-policy-gain" style="color:var(--accent-green); font-size:11px;">Better Recommendations</b>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="brain-grid">
           <!-- Q-value Distribution Bar Chart -->
           <div class="chart-card glass-panel">
@@ -531,7 +847,10 @@
       <section id="catalog-tab" class="tab-pane">
         <div class="catalog-view glass-panel">
           <div class="catalog-header">
-            <h3><i class="fa-solid fa-compact-disc"></i> SoundSpace Song Catalog & Vector Search</h3>
+            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+              <h3><i class="fa-solid fa-compact-disc"></i> SoundSpace Song Catalog & Vector Search</h3>
+              <span class="badge-tag" id="catalog-count-badge" title="Total songs in catalog">-- tracks</span>
+            </div>
             <div class="filter-controls">
               <input type="text" id="catalog-search" class="input-text" placeholder="Search title or artist...">
               <select id="catalog-genre-filter" class="select-dropdown" style="width:180px;">
@@ -549,6 +868,59 @@
                 <option value="Acoustic / Folk">Acoustic / Folk</option>
                 <option value="Synthwave">Synthwave</option>
               </select>
+          </div>
+        </div>
+
+        <!-- Spotify Browse All Genre Categories Grid -->
+        <div class="spotify-browse-categories">
+          <h3 class="browse-categories-title"><i class="fa-solid fa-shapes"></i> Browse All Genres & Moods</h3>
+          <div class="category-tiles-grid">
+            <div class="category-tile" style="background: linear-gradient(135deg, #8c1932, #d84040);" onclick="window.app.loadOpenSpotCharts('Pop')">
+              <span class="cat-tile-name">Pop</span>
+              <i class="fa-solid fa-music cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #ba5d07, #e67e22);" onclick="window.app.loadOpenSpotCharts('Hip-Hop')">
+              <span class="cat-tile-name">Hip-Hop</span>
+              <i class="fa-solid fa-fire cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #1e3264, #3498db);" onclick="window.app.loadOpenSpotCharts('Lo-Fi')">
+              <span class="cat-tile-name">Lo-Fi & Chill</span>
+              <i class="fa-solid fa-mug-hot cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #e13300, #ff5722);" onclick="window.app.loadOpenSpotCharts('EDM')">
+              <span class="cat-tile-name">EDM / Dance</span>
+              <i class="fa-solid fa-bolt cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #8d67ab, #9b59b6);" onclick="window.app.loadOpenSpotCharts('Jazz')">
+              <span class="cat-tile-name">Jazz & Soul</span>
+              <i class="fa-solid fa-saxophone cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #27856a, #2ecc71);" onclick="window.app.loadOpenSpotCharts('Workout')">
+              <span class="cat-tile-name">Workout Hype</span>
+              <i class="fa-solid fa-dumbbell cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #537aa1, #6c5ce7);" onclick="window.app.loadOpenSpotCharts('Focus')">
+              <span class="cat-tile-name">Deep Focus</span>
+              <i class="fa-solid fa-brain cat-tile-icon"></i>
+            </div>
+            <div class="category-tile" style="background: linear-gradient(135deg, #bc5900, #f39c12);" onclick="window.app.loadOpenSpotCharts('Rock')">
+              <span class="cat-tile-name">Rock & Indie</span>
+              <i class="fa-solid fa-guitar cat-tile-icon"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Genre Filter Pills -->
+        <div class="genre-filter-pills" id="catalog-genre-pills">
+          <button class="pill-btn active" data-genre="Pop">Pop</button>
+          <button class="pill-btn" data-genre="Hip-Hop">Hip-Hop</button>
+          <button class="pill-btn" data-genre="EDM">EDM / Dance</button>
+          <button class="pill-btn" data-genre="Lo-Fi">Lo-Fi / Chillhop</button>
+          <button class="pill-btn" data-genre="Rock">Rock</button>
+          <button class="pill-btn" data-genre="Jazz">Jazz</button>
+          <button class="pill-btn" data-genre="R&B">R&B</button>
+          <button class="pill-btn" data-genre="Classical">Classical</button>
+        </div>
             </div>
           </div>
 
@@ -664,27 +1036,75 @@
     </main>
   </div>
 
-  <!-- Floating Mini Player Bar (visible when not on player tab) -->
-  <div class="mini-player-bar" id="mini-player-bar">
-    <div class="mini-player-left">
-      <img id="mini-cover" class="mini-cover" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Cover">
-      <div class="mini-track-info">
-        <span class="mini-title" id="mini-title">No track playing</span>
-        <span class="mini-artist" id="mini-artist">—</span>
+  <!-- Persistent Spotify Bottom Player Bar -->
+  <footer class="spotify-player-bar" id="spotify-player-bar">
+    <!-- Left: Now Playing Metadata & Actions -->
+    <div class="sp-player-left">
+      <img id="sp-player-cover" class="sp-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Album Cover">
+      <div class="sp-track-meta">
+        <span class="sp-title" id="sp-player-title" onclick="window.app.switchTab('player-tab')">No track playing</span>
+        <span class="sp-artist" id="sp-player-artist">—</span>
+      </div>
+      <button class="sp-btn-icon" id="sp-btn-like" title="Like Song (+1.0 RL Reward)">
+        <i class="fa-regular fa-heart"></i>
+      </button>
+      <button class="sp-btn-icon" id="sp-btn-save" title="Save to Playlist (+0.5 RL Reward)">
+        <i class="fa-solid fa-plus"></i>
+      </button>
+    </div>
+
+    <!-- Center: Playback Transport & Progress Timeline -->
+    <div class="sp-player-center">
+      <div class="sp-controls-row">
+        <button class="sp-ctrl-btn active" id="sp-btn-shuffle" title="Smart Shuffle (RL Policy Active)">
+          <i class="fa-solid fa-shuffle"></i>
+          <span class="sp-dot-active"></span>
+        </button>
+        <button class="sp-ctrl-btn" id="sp-btn-prev" title="Previous Track (Replay)">
+          <i class="fa-solid fa-backward-step"></i>
+        </button>
+        <button class="sp-btn-play-round" id="sp-btn-play" title="Play / Pause">
+          <i class="fa-solid fa-play"></i>
+        </button>
+        <button class="sp-ctrl-btn" id="sp-btn-next" title="Next Track (Skip)">
+          <i class="fa-solid fa-forward-step"></i>
+        </button>
+        <button class="sp-ctrl-btn" id="sp-btn-repeat" title="Repeat Mode">
+          <i class="fa-solid fa-repeat"></i>
+        </button>
+      </div>
+
+      <div class="sp-timeline-row">
+        <span class="sp-time" id="sp-time-cur">0:00</span>
+        <div class="sp-scrubber-wrapper">
+          <input type="range" id="sp-audio-scrubber" class="sp-progress-bar" min="0" max="100" value="0" step="0.1">
+        </div>
+        <span class="sp-time" id="sp-time-dur">3:30</span>
       </div>
     </div>
-    <div class="mini-player-controls">
-      <button class="btn-ctrl" id="mini-play-btn" style="width:36px;height:36px;font-size:14px;" title="Play / Pause">
-        <i class="fa-solid fa-play"></i>
+
+    <!-- Right: Context, Lyrics, Queue, Volume, Fullscreen -->
+    <div class="sp-player-right">
+      <button class="sp-btn-icon" id="sp-btn-lyrics-toggle" title="Synchronized Lyrics">
+        <i class="fa-solid fa-microphone-lines"></i>
       </button>
-      <button class="btn-ctrl btn-skip" id="mini-skip-btn" style="width:36px;height:36px;font-size:12px;background:rgba(245,158,11,0.2);color:var(--accent-amber);" title="Skip">
-        <i class="fa-solid fa-forward-step"></i>
+      <button class="sp-btn-icon" id="sp-btn-queue-toggle" title="Queue / Up Next">
+        <i class="fa-solid fa-list-music"></i>
       </button>
-      <button class="btn-small" id="mini-go-to-player" title="Open Player">
-        <i class="fa-solid fa-arrow-up-right-from-square"></i> Player
+      <button class="sp-btn-icon" id="sp-btn-studio-view" title="Open Studio Vinyl View" onclick="window.app.switchTab('player-tab')">
+        <i class="fa-solid fa-compact-disc"></i>
+      </button>
+      <div class="sp-volume-box">
+        <button class="sp-btn-icon" id="sp-btn-volume-icon" title="Mute / Unmute">
+          <i class="fa-solid fa-volume-high"></i>
+        </button>
+        <input type="range" id="sp-volume-slider" class="sp-vol-slider" min="0" max="100" value="100" step="1">
+      </div>
+      <button class="sp-btn-icon" id="sp-btn-theater" title="Fullscreen Lyrics Theater">
+        <i class="fa-solid fa-expand"></i>
       </button>
     </div>
-  </div>
+  </footer>
 
   <!-- Fullscreen Lyrics Theater Modal -->
   <div class="lyrics-theater-modal" id="lyrics-theater-modal" style="display: none;">
@@ -735,6 +1155,57 @@
         <div class="theater-lyrics-scroll" id="theater-lyrics-scroll">
           <!-- Synced lines for theater mode with huge kinetic typography -->
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Create Custom Playlist -->
+  <div class="spotify-modal-backdrop" id="create-playlist-modal" style="display: none;">
+    <div class="spotify-modal-card glass-panel">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-plus-circle"></i> Create New Playlist</h3>
+        <button class="btn-icon-small" id="btn-close-create-playlist"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group" style="margin-bottom: 12px;">
+          <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">Playlist Name</label>
+          <input type="text" id="input-playlist-name" placeholder="My Awesome Playlist..." class="modal-input" style="width:100%; padding:10px 14px; background:#242424; border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:14px; outline:none;">
+        </div>
+        <div class="form-group">
+          <label style="display:block; font-size:12px; color:var(--text-secondary); margin-bottom:6px;">Description (Optional)</label>
+          <textarea id="input-playlist-desc" placeholder="Give your playlist a vibe or description..." class="modal-textarea" rows="3" style="width:100%; padding:10px 14px; background:#242424; border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; font-size:13px; outline:none; resize:none;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+        <button class="btn-small" id="btn-cancel-create-playlist">Cancel</button>
+        <button class="btn-small btn-primary" id="btn-submit-create-playlist"><i class="fa-solid fa-check"></i> Create Playlist</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal: Add Song to Playlist -->
+  <div class="spotify-modal-backdrop" id="add-to-playlist-modal" style="display: none;">
+    <div class="spotify-modal-card glass-panel">
+      <div class="modal-header">
+        <h3><i class="fa-solid fa-list-check"></i> Add to Playlist</h3>
+        <button class="btn-icon-small" id="btn-close-add-playlist"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-track-preview" id="modal-add-track-preview" style="display:flex; align-items:center; gap:12px; padding:10px; background:rgba(255,255,255,0.06); border-radius:6px; margin-bottom:14px;">
+          <img id="modal-preview-thumb" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Art" style="width:44px; height:44px; border-radius:4px; object-fit:cover;">
+          <div>
+            <div id="modal-preview-title" style="font-weight:700; color:#fff; font-size:13px;">Song Title</div>
+            <div id="modal-preview-artist" style="font-size:11px; color:var(--text-muted);">Artist Name</div>
+          </div>
+        </div>
+        <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom:8px;">Choose Playlist:</div>
+        <div class="modal-playlist-list" id="modal-playlists-list" style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto;">
+          <!-- List of user playlists -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+        <button class="btn-small" id="btn-open-create-from-add"><i class="fa-solid fa-plus"></i> New Playlist</button>
+        <button class="btn-small btn-primary" id="btn-cancel-add-playlist">Done</button>
       </div>
     </div>
   </div>

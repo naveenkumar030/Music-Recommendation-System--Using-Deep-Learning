@@ -80,6 +80,9 @@ class SoundSpacePlayer {
       if (window.app && window.app.onPlaybackTimeUpdate) {
         window.app.onPlaybackTimeUpdate(cur, dur);
       }
+      if (window.app && window.app.updateSpotifyPlayerBar) {
+        window.app.updateSpotifyPlayerBar();
+      }
     });
 
     this.audioEl.addEventListener('playing', () => {
@@ -88,6 +91,9 @@ class SoundSpacePlayer {
       const vinyl = document.getElementById('vinyl-disc');
       if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
       if (vinyl) vinyl.classList.remove('paused');
+      if (window.app && window.app.updateSpotifyPlayerBar) {
+        window.app.updateSpotifyPlayerBar();
+      }
     });
 
     this.audioEl.addEventListener('pause', () => {
@@ -97,6 +103,9 @@ class SoundSpacePlayer {
         const vinyl = document.getElementById('vinyl-disc');
         if (playBtn) playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
         if (vinyl) vinyl.classList.add('paused');
+        if (window.app && window.app.updateSpotifyPlayerBar) {
+          window.app.updateSpotifyPlayerBar();
+        }
       }
     });
 

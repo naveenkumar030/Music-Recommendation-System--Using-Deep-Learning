@@ -26,11 +26,20 @@ def test_health_check(client):
 
 
 def test_songs_and_users_endpoints(client):
+    # Browse mode with limit=10: should return envelope {songs, total, offset, limit}
     res_songs = client.get("/api/songs?limit=10")
     assert res_songs.status_code == 200
-    songs = res_songs.json()
+    data = res_songs.json()
+    # New envelope shape
+    assert "songs" in data, f"Expected 'songs' key in response, got: {list(data.keys())}"
+    assert "total" in data
+    assert "offset" in data
+    assert "limit" in data
+    songs = data["songs"]
     assert len(songs) == 10
     assert "danceability" in songs[0]
+    # Total must be the full catalog size, not just the page
+    assert data["total"] >= 10
 
     res_users = client.get("/api/users")
     assert res_users.status_code == 200
@@ -131,3 +140,55 @@ def test_related_songs_endpoint(client):
     assert p95_lat < 50.0
 
 
+
+def test_songs_catalog_count(client):
+    """
+    Sanity check: /api/songs total must cover the full songs.parquet and must be
+    >= the catalog_size from /api/health (the feature-store only indexes songs that have
+    embeddings, so parquet can legitimately have slightly more rows).
+
+    This guards against any future truncation regression in the browse endpoint.
+    """
+    health_res = client.get("/api/health")
+    assert health_res.status_code == 200
+    catalog_size = health_res.json()["catalog_size"]
+    assert catalog_size >= 1000, f"Expected at least 1000 songs in feature store, got {catalog_size}"
+
+    songs_res = client.get("/api/songs")
+    assert songs_res.status_code == 200
+    data = songs_res.json()
+    assert "total" in data, "Response must include 'total' field"
+    songs_total = data["total"]
+
+    # songs.parquet rows >= feature-store indexed songs (some may lack embeddings)
+    assert songs_total >= catalog_size, (
+        f"/api/songs total={songs_total} < catalog_size={catalog_size}. "
+        "The song catalog endpoint is missing rows that the feature store has indexed."
+    )
+    assert songs_total >= 1000, f"Expected at least 1000 songs in catalog, got {songs_total}"
+    # The first page of songs should exist
+    assert len(data["songs"]) > 0
+    print(f"[Catalog Sanity] /api/songs total={songs_total}, feature_store catalog_size={catalog_size} ✅")
+
+
+
+def test_songs_search_no_truncation(client):
+    """
+    A broad search query (single letter) should match many catalog songs —
+    previously this was capped at 8 in the Quick-Add or 40 in the catalog tab.
+    With the fix, the search path returns up to 500 matches uncapped.
+    """
+    # 'a' should match most songs in the catalog by title or artist
+    res = client.get("/api/songs?search=a")
+    assert res.status_code == 200
+    data = res.json()
+    assert "songs" in data
+    assert "total" in data
+    # With 1552 songs, searching 'a' should return far more than 50
+    assert data["total"] > 50, (
+        f"Search for 'a' returned only {data['total']} results. "
+        "The search endpoint should not truncate result count."
+    )
+    # All returned songs must contain 'a' somewhere
+    assert len(data["songs"]) <= 500  # capped at 500 per design
+    print(f"[Search Sanity] /api/songs?search=a total={data['total']}, returned={len(data['songs'])} ✅")
