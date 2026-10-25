@@ -4,7 +4,7 @@ Feature Store for Song Embeddings, Metadata, and User Profile Lookups.
 Provides:
 - High-dimensional acoustic + categorical song embeddings.
 - User static taste representations.
-- Fast matrix operations and tensor lookups for Candidate Generation and RL state construction.
+- Fast matrix operations and tensor lookups for Candidate Generation and Deep Learning state representation.
 - Dynamic runtime ingestion of OpenSpot tracks into active recommendation indices.
 """
 
@@ -14,6 +14,13 @@ from typing import Dict, List, Tuple, Optional
 import numpy as np
 import pandas as pd
 import torch
+
+
+CORE_GENRES = [
+    'Acoustic / Folk', 'Classical', 'EDM / Electronic', 'Hip-Hop', 
+    'Indie / Alternative', 'Jazz', 'Lo-Fi / Chillhop', 'Metal', 
+    'Pop', 'R&B / Soul', 'Rock', 'Synthwave'
+]
 
 
 class FeatureStore:
@@ -68,10 +75,23 @@ class FeatureStore:
         genre_vec = [0.0] * len(self.genre_to_idx)
         if genre in self.genre_to_idx:
             genre_vec[self.genre_to_idx[genre]] = 1.0
+        elif genre == "Telugu":
+            genre_vec[self.genre_to_idx.get("Pop", 0)] = 1.0
         elif "Pop" in self.genre_to_idx:
             genre_vec[self.genre_to_idx["Pop"]] = 1.0
 
         return np.array(cont + genre_vec, dtype=np.float32)
+
+    @staticmethod
+    def _sanitize_meta_dict(d: Dict) -> Dict:
+        """Sanitizes metadata dict so that float('nan') or pd.NA are replaced by None for JSON compliance."""
+        clean = {}
+        for k, v in d.items():
+            if pd.isna(v) or v is np.nan:
+                clean[k] = None
+            else:
+                clean[k] = v
+        return clean
 
     def load_and_index(self, users_df: pd.DataFrame, songs_df: pd.DataFrame):
         """Loads and precomputes dense embedding matrices for users and songs."""
@@ -84,7 +104,7 @@ class FeatureStore:
         self.user_id_to_idx = {uid: idx for idx, uid in enumerate(self.users_df["user_id"])}
         self.idx_to_user_id = {idx: uid for uid, idx in self.user_id_to_idx.items()}
 
-        genres = sorted(self.songs_df["genre"].unique().tolist())
+        genres = CORE_GENRES
         self.genre_to_idx = {g: idx for idx, g in enumerate(genres)}
 
         # Build Song Feature Matrix (continuous normalized + one-hot genre)
@@ -113,14 +133,15 @@ class FeatureStore:
 
         # Cache metadata dicts for O(1) sub-millisecond retrieval
         self.song_metadata_dict = {
-            row["song_id"]: row.to_dict() for _, row in self.songs_df.iterrows()
+            row["song_id"]: self._sanitize_meta_dict(row.to_dict()) for _, row in self.songs_df.iterrows()
         }
 
     def add_song(self, song_dict: Dict) -> int:
         """Dynamically indexes a new OpenSpot track into the live FeatureStore in memory."""
         song_id = song_dict["song_id"]
+        sanitized = self._sanitize_meta_dict(song_dict)
         if song_id in self.song_id_to_idx:
-            self.song_metadata_dict[song_id] = song_dict
+            self.song_metadata_dict[song_id] = sanitized
             return self.song_id_to_idx[song_id]
 
         idx = len(self.song_id_to_idx)
@@ -135,7 +156,7 @@ class FeatureStore:
             self.song_features_matrix = np.array([vec], dtype=np.float32)
             self.song_tensor = torch.tensor(self.song_features_matrix, dtype=torch.float32)
 
-        self.song_metadata_dict[song_id] = song_dict
+        self.song_metadata_dict[song_id] = sanitized
         new_row = pd.DataFrame([song_dict])
         self.songs_df = pd.concat([self.songs_df, new_row], ignore_index=True)
         return idx
@@ -158,8 +179,12 @@ class FeatureStore:
         """Returns metadata dictionary for a given song."""
         if song_id in self.song_metadata_dict:
             return self.song_metadata_dict[song_id]
-        row = self.songs_df[self.songs_df["song_id"] == song_id].iloc[0]
-        return row.to_dict()
+        matching = self.songs_df[self.songs_df["song_id"] == song_id]
+        if len(matching) > 0:
+            sanitized = self._sanitize_meta_dict(matching.iloc[0].to_dict())
+            self.song_metadata_dict[song_id] = sanitized
+            return sanitized
+        return {}
 
     @property
     def song_dim(self) -> int:

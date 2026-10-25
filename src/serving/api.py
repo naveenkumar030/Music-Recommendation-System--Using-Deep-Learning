@@ -1,16 +1,16 @@
 """
-FastAPI Serving API for the RL Song Recommendation System.
+FastAPI Serving API for the Deep Learning Song Recommendation System.
 
 Provides REST endpoints for:
 - /api/health: health check and model loading status.
 - /api/songs: song catalog query and audio feature lookup.
 - /api/users: synthetic persona and user profile list.
-- /api/recommend: next-track or 10-track slate recommendation (Two-Tower -> Wolpertinger RL -> Business Rules).
-- /api/recommend/hybrid: Full hybrid pipeline (Content-Based + Collaborative + Context + Diversity + Exploration + RL Q-scores).
+- /api/recommend: next-track or 10-track slate recommendation (Two-Tower -> Deep Neural Ranker -> Business Rules).
+- /api/recommend/hybrid: Full hybrid pipeline (Content-Based + Collaborative + Context + Diversity + Exploration + Deep Ranking Scores).
 - /api/feedback: online feedback ingestion and behavior signal logging.
 - /api/behavior/log: Granular user behavior event logging (listen_ms, replay, search_click, playlist_save).
 - /api/behavior/profile/{user_id}: Serialized behavior profile with genre heatmap, acoustic centroid, mood.
-- /api/openspot/import: Single-track import from OpenSpot into live RL catalog.
+- /api/openspot/import: Single-track import from OpenSpot into live catalog.
 - /api/openspot/import/batch: Batch import of multiple OpenSpot tracks in one request.
 - /api/simulate: live multi-session A/B simulation comparing models.
 - /api/metrics: offline eval report and guardrails.
@@ -44,8 +44,7 @@ REQUIRED_ARTIFACTS = {
     "baseline_two_tower":   "models/baseline_two_tower.pt",
     "song_embeddings":      "models/song_embeddings.npy",
     "song_ids":             "models/song_ids.json",
-    "wolpertinger_actor":   "models/wolpertinger_rl_actor.pt",
-    "wolpertinger_critic":  "models/wolpertinger_rl_critic.pt",
+    "deep_ranker":          "models/deep_ranker.pt",
     "user_response_model":  "models/user_response_model.joblib",
     "songs_parquet":        "data/processed/songs.parquet",
     "users_parquet":        "data/processed/users.parquet",
@@ -61,13 +60,13 @@ from src.data.behavior_store import behavior_store, BehaviorStore
 from src.env.response_model import UserResponseModel
 from src.env.music_env import SongRecEnv, PlaybackEvent, compute_reward
 from src.models.retrieval import TwoTowerModel, VectorIndex, UserEmbeddingCache
-from src.models.actor_critic import WolpertingerAgent
+from src.models.deep_ranker import DeepRankerAgent, MultiTaskDeepRanker
 from src.models.hybrid_ranker import hybrid_ranker, infer_context_from_hour, get_context_profile
 
 app = FastAPI(
-    title="RL Song Recommender API",
-    description="Production-grade RL recommendation service with Two-Tower candidate retrieval and Wolpertinger Actor-Critic re-ranking.",
-    version="1.0.0"
+    title="SoundSpace DL — Deep Learning Music Recommendation API",
+    description="Production-grade Deep Learning recommendation service with Two-Tower DSSM candidate retrieval and Multi-Task Deep Neural Re-Ranking.",
+    version="2.0.0"
 )
 
 app.add_middleware(
@@ -104,6 +103,7 @@ STATE: Dict[str, Any] = {
     "feature_store": None,
     "retrieval_model": None,
     "vector_index": None,
+    "deep_ranker": None,
     "rl_agent": None,
     "response_model": None,
     "env": None,
@@ -132,12 +132,32 @@ def _get_user_embedding(fs: FeatureStore, retrieval_model: TwoTowerModel, user_i
     return u_emb
 
 
+def _is_telugu_track(meta: Optional[Dict[str, Any]]) -> bool:
+    """Helper to detect Telugu tracks for prioritized serving."""
+    if not meta:
+        return False
+    genre = str(meta.get("genre", "")).lower()
+    lang = str(meta.get("language", "")).lower()
+    if "telugu" in genre or "tollywood" in genre or "telugu" in lang:
+        return True
+    combined = f"{meta.get('title', '')} {meta.get('artist_name', '')} {meta.get('album', '')}".lower()
+    telugu_keywords = [
+        "telugu", "tollywood", "thaman", "devi sri prasad", "dsp", "keeravani", 
+        "sid sriram", "ram miriyala", "anirudh", "hesham abdul", "anurag kulkarni",
+        "mangli", "armaan malik", "naatu naatu", "samajavaragamana", "butta bomma", 
+        "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", 
+        "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", 
+        "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"
+    ]
+    return any(k in combined for k in telugu_keywords)
+
+
 class RecommendRequest(BaseModel):
     user_id: str = Field(default="usr_00001")
     history_song_ids: List[str] = Field(default_factory=list)
     history_skip_types: List[str] = Field(default_factory=list)
     history_likes: List[int] = Field(default_factory=list)
-    model_type: str = Field(default="wolpertinger")  # 'wolpertinger', 'baseline', 'random'
+    model_type: str = Field(default="deep_ranker")  # 'deep_ranker', 'two_tower', 'baseline', 'random'
     slate_size: int = Field(default=1)               # 1 for next-track, k for slate
 
 
@@ -185,7 +205,7 @@ class FeedbackRequest(BaseModel):
 class SimulateRequest(BaseModel):
     user_id: Optional[str] = None
     num_sessions: int = Field(default=20)
-    models_to_compare: List[str] = Field(default=["baseline", "wolpertinger", "random"])
+    models_to_compare: List[str] = Field(default=["baseline", "deep_ranker", "random"])
 
 
 @app.on_event("startup")
@@ -206,7 +226,7 @@ def startup_event():
                 f"          Run the appropriate training step to generate it:\n"
                 f"            data artifacts   → python -m src.data.ingestion\n"
                 f"            baseline model   → python -m src.training.train_baseline\n"
-                f"            RL agent         → python -m src.training.train_rl\n"
+                f"            deep ranker      → python -m src.training.train_deep_ranker\n"
             )
             logger.error(msg)
             missing.append(name)
@@ -241,7 +261,7 @@ def startup_event():
         )
         return
 
-    song_embeddings = None  # Track for downstream RL agent loading
+    song_embeddings = None  # Track for downstream Deep Ranker loading
 
     # ── Load Two-Tower Baseline ───────────────────────────────────────────────
     try:
@@ -284,36 +304,32 @@ def startup_event():
     except Exception as e:
         logger.error(
             f"[Startup] ❌ ERROR: Could not load Response Model / Env: {e}\n"
-            f"          Run: python -m src.training.train_rl"
+            f"          Run: python -m src.training.train_deep_ranker"
         )
 
-    # ── Load Wolpertinger RL Agent ────────────────────────────────────────────
+    # ── Load Multi-Task Deep Neural Ranker ─────────────────────────────────────
     try:
         if song_embeddings is not None and STATE["env"] is not None:
-            agent = WolpertingerAgent(
+            deep_agent = DeepRankerAgent(
                 state_dim=STATE["env"].state_dim,
                 song_embeddings=song_embeddings,
-                action_embed_dim=64,
-                k_candidates=50
+                song_dim=64,
+                feature_store=fs
             )
-            agent.load(f"{models_dir}/wolpertinger_rl")
-            STATE["rl_agent"] = agent
-            logger.info("[Startup] ✅ Wolpertinger RL agent loaded.")
+            deep_path = Path(f"{models_dir}/deep_ranker.pt")
+            if deep_path.exists():
+                deep_agent.load(deep_path)
+                logger.info("[Startup] ✅ Multi-Task Deep Neural Ranker loaded.")
+            else:
+                logger.warning("[Startup] Deep ranker checkpoint not found, initialized with defaults.")
+            STATE["deep_ranker"] = deep_agent
+            STATE["rl_agent"] = deep_agent  # Alias for backwards compatibility
         elif song_embeddings is None:
-            logger.error(
-                "[Startup] ❌ Skipping RL agent load — song_embeddings.npy missing.\n"
-                "          Run: python -m src.training.train_baseline"
-            )
+            logger.error("[Startup] ❌ Skipping Deep Ranker load — song_embeddings.npy missing.")
         elif STATE["env"] is None:
-            logger.error(
-                "[Startup] ❌ Skipping RL agent load — SongRecEnv not initialized.\n"
-                "          Run: python -m src.training.train_rl"
-            )
+            logger.error("[Startup] ❌ Skipping Deep Ranker load — SongRecEnv not initialized.")
     except Exception as e:
-        logger.error(
-            f"[Startup] ❌ ERROR: Could not load Wolpertinger RL agent: {e}\n"
-            f"          Run: python -m src.training.train_rl"
-        )
+        logger.error(f"[Startup] ❌ ERROR: Could not load Deep Neural Ranker: {e}")
 
 
 @app.get("/api/health")
@@ -323,7 +339,8 @@ def health_check():
         "feature_store":   STATE["feature_store"]   is not None,
         "retrieval_model": STATE["retrieval_model"] is not None,
         "vector_index":    STATE["vector_index"]    is not None,
-        "rl_agent":        STATE["rl_agent"]         is not None,
+        "deep_ranker":     STATE.get("deep_ranker") is not None,
+        "rl_agent":        STATE.get("deep_ranker") is not None or STATE.get("rl_agent") is not None,
         "response_model":  STATE["response_model"]  is not None,
     }
     all_loaded = all(models_loaded.values())
@@ -333,11 +350,11 @@ def health_check():
         "catalog_size": STATE["feature_store"].num_songs if STATE["feature_store"] else 0,
         "missing_artifacts": missing,
         "fix_commands": {
-            "data":     "python -m src.data.ingestion",
-            "baseline": "python -m src.training.train_baseline",
-            "rl_agent": "python -m src.training.train_rl",
+            "data":        "python -m src.data.ingestion",
+            "baseline":    "python -m src.training.train_baseline",
+            "deep_ranker": "python -m src.training.train_deep_ranker",
         } if missing else {},
-        "active_pipeline": "wolpertinger_rl" if models_loaded["rl_agent"] else "hybrid_heuristic",
+        "active_pipeline": "deep_neural_ranker" if models_loaded["deep_ranker"] else "two_tower_retrieval",
     }
 
 
@@ -358,6 +375,11 @@ def get_songs(
     df = fs.songs_df.copy()
     if genre and genre != "All":
         df = df[df["genre"] == genre]
+    else:
+        # Prioritize Telugu songs to the very top in browse mode
+        is_telugu = (df["genre"] == "Telugu") | (df.get("language") == 99)
+        df["_telugu_prio"] = is_telugu.astype(int)
+        df = df.sort_values(by=["_telugu_prio"], ascending=False).drop(columns=["_telugu_prio"])
     if search:
         s_lower = search.lower()
         mask = (
@@ -378,12 +400,12 @@ def get_songs(
 
 
 @app.get("/api/openspot/search")
-def openspot_search(q: str, limit: int = 20, p: int = 1):
+def openspot_search(q: str, limit: int = 40, p: int = 1):
     """Searches live OpenSpot catalog with real 320kbps audio streams and 500x500 album art."""
     if not q or not q.strip():
-        return {"results": [], "count": 0}
+        return {"results": [], "count": 0, "page": p}
     results = openspot_client.search_songs(q.strip(), limit=limit, p=p)
-    return {"results": results, "count": len(results)}
+    return {"results": results, "count": len(results), "page": p}
 
 
 @app.get("/api/openspot/autocomplete")
@@ -395,10 +417,10 @@ def openspot_autocomplete(q: str):
 
 
 @app.get("/api/openspot/charts")
-def openspot_charts(genre: str = "Pop", limit: int = 20):
-    """Fetches trending genre charts from OpenSpot."""
-    results = openspot_client.get_top_charts(genre=genre, limit=limit)
-    return {"genre": genre, "results": results, "count": len(results)}
+def openspot_charts(genre: str = "Pop", limit: int = 40, p: int = 1):
+    """Fetches trending genre charts from OpenSpot with pagination support."""
+    results = openspot_client.get_top_charts(genre=genre, limit=limit, p=p)
+    return {"genre": genre, "results": results, "count": len(results), "page": p}
 
 
 @app.post("/api/openspot/import")
@@ -406,13 +428,13 @@ def openspot_import_song(req: OpenSpotImportRequest):
     """
     Dynamically imports an OpenSpot track into the live FeatureStore,
     encodes its latent vector using Two-Tower SongTower, adds it to the VectorIndex,
-    and updates the Wolpertinger RL Agent's action space in real time.
+    and updates the Deep Ranker Agent's candidate space in real time.
     Also persists the track to disk so it survives server restarts.
     """
     fs: FeatureStore = STATE["feature_store"]
     retrieval_model: TwoTowerModel = STATE["retrieval_model"]
     v_index: VectorIndex = STATE["vector_index"]
-    agent: WolpertingerAgent = STATE["rl_agent"]
+    agent = STATE.get("deep_ranker") or STATE.get("rl_agent")
 
     if not fs or not retrieval_model or not v_index:
         raise HTTPException(status_code=503, detail="Server models not initialized.")
@@ -432,7 +454,7 @@ def openspot_import_song(req: OpenSpotImportRequest):
     # 3. Add to Vector Index
     v_index.add_item(song_id, s_emb)
 
-    # 4. Add to Wolpertinger Agent candidate space
+    # 4. Add to Deep Ranker Agent candidate space
     if agent is not None:
         agent.add_song_embedding(s_emb)
 
@@ -441,7 +463,7 @@ def openspot_import_song(req: OpenSpotImportRequest):
 
     return {
         "status": "success",
-        "message": f"Successfully imported '{req.title}' by {req.artist_name} into RL catalog!",
+        "message": f"Successfully imported '{req.title}' by {req.artist_name} into Deep Learning catalog!",
         "song": fs.get_song_metadata(song_id),
         "catalog_size": fs.num_songs
     }
@@ -455,14 +477,14 @@ class OpenSpotBatchImportRequest(BaseModel):
 @app.post("/api/openspot/import/batch")
 def openspot_import_batch(req: OpenSpotBatchImportRequest):
     """
-    Batch-imports a list of OpenSpot tracks into the live RL catalog.
+    Batch-imports a list of OpenSpot tracks into the live Deep Learning catalog.
     One bad track doesn't fail the whole batch — errors are reported per-track.
     All successfully imported tracks are also persisted to disk.
     """
     fs: FeatureStore = STATE["feature_store"]
     retrieval_model: TwoTowerModel = STATE["retrieval_model"]
     v_index: VectorIndex = STATE["vector_index"]
-    agent: WolpertingerAgent = STATE["rl_agent"]
+    agent = STATE.get("deep_ranker") or STATE.get("rl_agent")
 
     if not fs or not retrieval_model or not v_index:
         raise HTTPException(status_code=503, detail="Server models not initialized.")
@@ -488,7 +510,7 @@ def openspot_import_batch(req: OpenSpotBatchImportRequest):
             # 3. Add to Vector Index
             v_index.add_item(song_id, s_emb)
 
-            # 4. Update RL agent candidate space
+            # 4. Update Deep Ranker candidate space
             if agent is not None:
                 agent.add_song_embedding(s_emb)
 
@@ -648,15 +670,43 @@ def get_song_lyrics(
     if not artist:
         artist = "Unknown Artist"
 
+    dur_clean = 210000
+    try:
+        if duration_ms is not None and not pd.isna(duration_ms):
+            dur_clean = int(float(duration_ms))
+    except (ValueError, TypeError):
+        dur_clean = 210000
+
+    e_clean = 0.65
+    try:
+        if energy is not None and not pd.isna(energy):
+            e_clean = float(energy)
+    except (ValueError, TypeError):
+        e_clean = 0.65
+
+    v_clean = 0.60
+    try:
+        if valence is not None and not pd.isna(valence):
+            v_clean = float(valence)
+    except (ValueError, TypeError):
+        v_clean = 0.60
+
+    t_clean = 120.0
+    try:
+        if tempo is not None and not pd.isna(tempo):
+            t_clean = float(tempo)
+    except (ValueError, TypeError):
+        t_clean = 120.0
+
     lyrics_data = lyrics_service.get_lyrics(
         song_id=song_id or f"temp_{hash(title + artist)}",
         title=title,
         artist=artist,
-        duration_ms=duration_ms or 210000,
+        duration_ms=dur_clean,
         genre=genre or "Pop",
-        energy=float(energy) if energy is not None else 0.65,
-        valence=float(valence) if valence is not None else 0.60,
-        tempo=float(tempo) if tempo is not None else 120.0
+        energy=e_clean,
+        valence=v_clean,
+        tempo=t_clean
     )
 
     return lyrics_data
@@ -696,10 +746,10 @@ def get_related_songs(song_id: str, limit_per_section: int = 8):
     ranked_indices = np.argsort(-sims)
     
     seed_genre = seed_meta["genre"]
-    seed_energy = float(seed_meta["energy"])
-    seed_valence = float(seed_meta["valence"])
-    seed_tempo = float(seed_meta["tempo"])
-    seed_dance = float(seed_meta["danceability"])
+    seed_energy = float(seed_meta.get("energy") or 0.65)
+    seed_valence = float(seed_meta.get("valence") or 0.60)
+    seed_tempo = float(seed_meta.get("tempo") or 120.0)
+    seed_dance = float(seed_meta.get("danceability") or 0.60)
 
     acoustic_twins = []
     same_genre_songs = []
@@ -728,10 +778,10 @@ def get_related_songs(song_id: str, limit_per_section: int = 8):
         # Normalize cosine similarity from [-1, 1] to [0%, 100%] correctly
         match_pct = round(max(0.0, min(99.9, (sim_val + 1.0) / 2.0 * 100.0)), 1)
         
-        c_energy = float(meta["energy"])
-        c_valence = float(meta["valence"])
-        c_tempo = float(meta["tempo"])
-        c_dance = float(meta["danceability"])
+        c_energy = float(meta.get("energy") or 0.65)
+        c_valence = float(meta.get("valence") or 0.60)
+        c_tempo = float(meta.get("tempo") or 120.0)
+        c_dance = float(meta.get("danceability") or 0.60)
         c_genre = meta["genre"]
 
         energy_diff = round(c_energy - seed_energy, 2)
@@ -891,7 +941,7 @@ def recommend_track(req: RecommendRequest):
     fs: FeatureStore = STATE["feature_store"]
     retrieval_model: TwoTowerModel = STATE["retrieval_model"]
     v_index: VectorIndex = STATE["vector_index"]
-    agent: WolpertingerAgent = STATE["rl_agent"]
+    agent = STATE.get("deep_ranker") or STATE.get("rl_agent")
     env: SongRecEnv = STATE["env"]
 
     if not fs:
@@ -903,7 +953,11 @@ def recommend_track(req: RecommendRequest):
     # 1. Candidate Generation: Cached Two-Tower user embedding
     u_emb = _get_user_embedding(fs, retrieval_model, req.user_id)
     top_cand_ids, cand_scores, ann_latency = v_index.query(u_emb, top_k=100)
-    cand_indices = [fs.song_id_to_idx[sid] for sid in top_cand_ids]
+
+    # Prioritize Telugu songs exclusively in the candidate pool
+    telugu_cand_ids = [sid for sid in fs.song_id_to_idx if _is_telugu_track(fs.get_song_metadata(sid))]
+    merged_cand_ids = list(dict.fromkeys(telugu_cand_ids + list(top_cand_ids)))[:100]
+    cand_indices = [fs.song_id_to_idx[sid] for sid in merged_cand_ids if sid in fs.song_id_to_idx]
 
     # Build current session state vector
     state_vec = _build_state_vector(
@@ -924,14 +978,12 @@ def recommend_track(req: RecommendRequest):
         for c_idx in chosen_indices:
             sid = fs.idx_to_song_id[c_idx]
             recommendations.append(fs.get_song_metadata(sid))
-    elif req.model_type == "baseline":
-        for i in range(req.slate_size):
-            sid = top_cand_ids[i]
+    elif req.model_type in ["baseline", "two_tower"]:
+        for i in range(min(req.slate_size, len(merged_cand_ids))):
+            sid = merged_cand_ids[i]
             recommendations.append(fs.get_song_metadata(sid))
     else:
-        # Wolpertinger RL Re-ranking
-        # Cold-start exploration: when session history is empty, inject noise so different
-        # users get varied first picks instead of converging to the same zero-padded state.
+        # Multi-Task Deep Neural Re-ranking
         cold_start_noise = 0.15 if len(req.history_song_ids) == 0 else 0.0
         recent_actions = [fs.song_id_to_idx[sid] for sid in req.history_song_ids if sid in fs.song_id_to_idx]
         action_idx, act_info = agent.select_action(
@@ -940,32 +992,49 @@ def recommend_track(req: RecommendRequest):
             exploration_noise=cold_start_noise,
             recent_action_indices=recent_actions
         )
-        selected_proto_action = act_info.get("proto_action", []).tolist() if "proto_action" in act_info else []
-        
-        # Format top candidate Q scores for visualizer
+        selected_proto_action = act_info.get("proto_action", []).tolist() if hasattr(act_info.get("proto_action", []), "tolist") else list(act_info.get("proto_action", []))
+
         sub_cands = act_info.get("candidate_indices", [])
         q_scores = act_info.get("q_scores", [])
-        for c_idx, q_val in zip(sub_cands[:10], q_scores[:10]):
-            c_sid = fs.idx_to_song_id[c_idx]
-            c_meta = fs.get_song_metadata(c_sid)
-            q_score_distribution.append({
-                "song_id": c_sid,
-                "title": c_meta["title"],
-                "artist": c_meta["artist_name"],
-                "genre": c_meta["genre"],
-                "q_score": round(float(q_val), 3)
-            })
+        p_completes = act_info.get("p_completes", [])
+        p_likes = act_info.get("p_likes", [])
+        p_skips = act_info.get("p_skips", [])
 
-        # Add top action
-        top_sid = fs.idx_to_song_id[action_idx]
-        recommendations.append(fs.get_song_metadata(top_sid))
+        for i, (c_idx, q_val) in enumerate(zip(sub_cands[:10], q_scores[:10])):
+            c_sid = fs.idx_to_song_id.get(c_idx)
+            if c_sid:
+                c_meta = fs.get_song_metadata(c_sid)
+                p_c = round(float(p_completes[i]), 3) if i < len(p_completes) else round(float(act_info.get("p_complete", 0.0)), 3)
+                p_l = round(float(p_likes[i]), 3) if i < len(p_likes) else round(float(act_info.get("p_like", 0.0)), 3)
+                p_s = round(float(p_skips[i]), 3) if i < len(p_skips) else round(float(act_info.get("p_skip", 0.0)), 3)
+                q_score_distribution.append({
+                    "song_id": c_sid,
+                    "title": c_meta.get("title", ""),
+                    "artist": c_meta.get("artist_name", ""),
+                    "genre": c_meta.get("genre", ""),
+                    "q_score": round(float(q_val), 3),
+                    "deep_score": round(float(q_val), 3),
+                    "rank_score": round(float(q_val), 3),
+                    "p_complete": p_c,
+                    "p_like": p_l,
+                    "p_skip": p_s
+                })
 
-        # If slate requested, take highest Q candidates
-        if req.slate_size > 1:
-            sorted_by_q = sorted(zip(sub_cands, q_scores), key=lambda x: x[1], reverse=True)
-            for c_idx, _ in sorted_by_q[1:req.slate_size]:
-                sid = fs.idx_to_song_id[c_idx]
-                recommendations.append(fs.get_song_metadata(sid))
+        # Add top action and fill slate with unique top-ranked items
+        ranked_sids = [fs.idx_to_song_id[action_idx]]
+        sorted_pairs = sorted(zip(sub_cands, q_scores), key=lambda x: x[1], reverse=True)
+        for c_idx, _ in sorted_pairs:
+            sid = fs.idx_to_song_id.get(c_idx)
+            if sid and sid not in ranked_sids:
+                ranked_sids.append(sid)
+            if len(ranked_sids) >= req.slate_size:
+                break
+        score_lookup = {item["song_id"]: item["deep_score"] for item in q_score_distribution}
+        for sid in ranked_sids:
+            meta = dict(fs.get_song_metadata(sid))
+            if sid in score_lookup:
+                meta["deep_score"] = score_lookup[sid]
+            recommendations.append(meta)
 
     total_latency_ms = (time.perf_counter() - t0) * 1000.0
 
@@ -974,7 +1043,9 @@ def recommend_track(req: RecommendRequest):
         "model_type": req.model_type,
         "recommendations": recommendations,
         "q_score_distribution": q_score_distribution,
+        "deep_score_distribution": q_score_distribution,
         "proto_action_embedding": selected_proto_action,
+        "active_pipeline": "deep_neural_ranker",
         "latency_ms": round(total_latency_ms, 2)
     }
 
@@ -983,7 +1054,7 @@ def recommend_track(req: RecommendRequest):
 def process_feedback(req: FeedbackRequest):
     fs: FeatureStore = STATE["feature_store"]
     bs: BehaviorStore = STATE["behavior_store"]
-    agent: Optional[WolpertingerAgent] = STATE.get("rl_agent")
+    agent: Optional[DeepRankerAgent] = STATE.get("deep_ranker") or STATE.get("rl_agent")
 
     if not fs:
         raise HTTPException(status_code=503, detail="FeatureStore not initialized.")
@@ -1001,7 +1072,7 @@ def process_feedback(req: FeedbackRequest):
     else:
         skip_type = "no_skip"
 
-    # Maintain active session transitions for online RL learning
+    # Maintain active session transitions for online learning
     session_key = req.session_id or req.user_id or "default_session"
     if "active_sessions" not in STATE or not isinstance(STATE["active_sessions"], dict):
         STATE["active_sessions"] = {}
@@ -1021,7 +1092,7 @@ def process_feedback(req: FeedbackRequest):
         session_data["history_likes"]
     )
 
-    # Compute immediate reward using RL specification:
+    # Compute immediate engagement utility:
     # Like: +1.0, Listen (no_skip): +0.5, Skip: -1.0
     ev = PlaybackEvent(
         song_id=req.song_id,
@@ -1064,7 +1135,7 @@ def process_feedback(req: FeedbackRequest):
                 loss_info = agent.train_step(batch_size=32)
                 policy_updated = bool(loss_info)
         except Exception as err:
-            logger.warning(f"[RL Online Learning] Online train step warning: {err}")
+            logger.warning(f"[DL Online Learning] Online train step warning: {err}")
 
     # Log to BehaviorStore for hybrid recommendation signals
     bs.record_event(
@@ -1075,11 +1146,11 @@ def process_feedback(req: FeedbackRequest):
         artist_name=song_meta.get("artist_name", ""),
         genre=song_meta.get("genre", "Pop"),
         listen_ms=req.listen_ms,
-        duration_ms=song_meta.get("duration_ms", 210000),
-        energy=float(song_meta.get("energy", 0.65)),
-        valence=float(song_meta.get("valence", 0.60)),
-        danceability=float(song_meta.get("danceability", 0.60)),
-        tempo=float(song_meta.get("tempo", 120.0)),
+        duration_ms=int(song_meta.get("duration_ms") or 210000),
+        energy=float(song_meta.get("energy") or 0.65),
+        valence=float(song_meta.get("valence") or 0.60),
+        danceability=float(song_meta.get("danceability") or 0.60),
+        tempo=float(song_meta.get("tempo") or 120.0),
     )
 
     # Dynamic User State snapshot
@@ -1208,11 +1279,11 @@ def hybrid_recommend(req: HybridRecommendRequest):
                 user_id=req.user_id, song_id=sid, event_type="listen_end",
                 title=meta.get("title", ""), artist_name=meta.get("artist_name", ""),
                 genre=meta.get("genre", "Pop"), listen_ms=ms,
-                duration_ms=meta.get("duration_ms", 210000),
-                energy=float(meta.get("energy", 0.65)),
-                valence=float(meta.get("valence", 0.60)),
-                danceability=float(meta.get("danceability", 0.60)),
-                tempo=float(meta.get("tempo", 120.0)),
+                duration_ms=int(meta.get("duration_ms") or 210000),
+                energy=float(meta.get("energy") or 0.65),
+                valence=float(meta.get("valence") or 0.60),
+                danceability=float(meta.get("danceability") or 0.60),
+                tempo=float(meta.get("tempo") or 120.0),
             )
 
     # Log replay events
@@ -1223,11 +1294,11 @@ def hybrid_recommend(req: HybridRecommendRequest):
                 user_id=req.user_id, song_id=sid, event_type="replay",
                 title=meta.get("title", ""), artist_name=meta.get("artist_name", ""),
                 genre=meta.get("genre", "Pop"), listen_ms=0,
-                duration_ms=meta.get("duration_ms", 210000),
-                energy=float(meta.get("energy", 0.65)),
-                valence=float(meta.get("valence", 0.60)),
-                danceability=float(meta.get("danceability", 0.60)),
-                tempo=float(meta.get("tempo", 120.0)),
+                duration_ms=int(meta.get("duration_ms") or 210000),
+                energy=float(meta.get("energy") or 0.65),
+                valence=float(meta.get("valence") or 0.60),
+                danceability=float(meta.get("danceability") or 0.60),
+                tempo=float(meta.get("tempo") or 120.0),
             )
 
     # ── Step 3: OpenSpot fresh candidate injection ────────────────────────────
@@ -1278,7 +1349,11 @@ def hybrid_recommend(req: HybridRecommendRequest):
             logging.getLogger(__name__).warning(f"OpenSpot profile fetch failed: {e}")
 
     # ── Step 4: Merge and deduplicate candidates ──────────────────────────────
-    all_candidates = ann_candidates + openspot_candidates
+    telugu_cands = [
+        {"song_meta": fs.get_song_metadata(sid), "content_sim": 0.95}
+        for sid in fs.song_id_to_idx if _is_telugu_track(fs.get_song_metadata(sid))
+    ]
+    all_candidates = telugu_cands + ann_candidates + openspot_candidates
     seen_cand_ids: set = set()
     merged_candidates = []
     for c in all_candidates:
@@ -1333,41 +1408,21 @@ def hybrid_recommend(req: HybridRecommendRequest):
     # ── Step 7: Trim to requested slate size ──────────────────────────────────
     ranked = ranked[:max(req.slate_size, 1)]
 
-    # ── Step 8: Augment with Wolpertinger Q-scores when RL agent is available ─
-    agent: WolpertingerAgent = STATE.get("rl_agent")
+    # ── Step 8: Augment with Deep Neural Ranker scores when agent is available ─
+    agent: Optional[DeepRankerAgent] = STATE.get("deep_ranker") or STATE.get("rl_agent")
     q_score_distribution = []
     if agent is not None and STATE.get("env") is not None:
         try:
-            # Build a minimal state vector for RL scoring
+            # Build state vector for Deep Ranker scoring
             env = STATE["env"]
-            history_window = 5
-            history_feats = []
-            recent_sids   = req.history_song_ids[-history_window:]
-            recent_skips  = req.history_skip_types[-history_window:]
-            recent_likes  = req.history_likes[-history_window:]
-            pad = history_window - len(recent_sids)
-            for _ in range(pad):
-                history_feats.extend([0.0] * (fs.song_dim + 3))
-            for idx_h, sid in enumerate(recent_sids):
-                s_v    = fs.get_song_vector_by_id(sid) if sid in fs.song_id_to_idx else np.zeros(fs.song_dim)
-                skip_t = recent_skips[idx_h] if idx_h < len(recent_skips) else "no_skip"
-                is_lk  = recent_likes[idx_h] if idx_h < len(recent_likes) else 0
-                history_feats.extend(list(s_v) + [
-                    1.0 if skip_t == "no_skip" else 0.0,
-                    1.0 if skip_t == "skip_early" else 0.0,
-                    1.0 if is_lk else 0.0,
-                ])
-            ctx_vec   = [14.0 / 24.0, 3.0 / 7.0, 1.0]
-            total_played = max(1, len(req.history_song_ids))
-            skips_cnt    = sum(1 for s in req.history_skip_types if "skip" in s and s != "no_skip")
-            likes_cnt    = sum(1 for lk in req.history_likes if lk == 1)
-            stats_vec    = [skips_cnt / total_played, likes_cnt / 10.0, total_played / 50.0]
-            state_vec    = np.concatenate([
-                fs.get_user_vector_by_id(req.user_id),
-                np.array(history_feats, dtype=np.float32),
-                np.array(ctx_vec, dtype=np.float32),
-                np.array(stats_vec, dtype=np.float32),
-            ]).astype(np.float32)
+            state_vec = _build_state_vector(
+                fs,
+                req.user_id,
+                req.history_song_ids,
+                req.history_skip_types,
+                req.history_likes,
+                history_window=5
+            )
 
             # Score top candidates from the ranked slate
             cand_ids = [s["song_id"] for s in ranked if s.get("song_id") in fs.song_id_to_idx]
@@ -1386,8 +1441,8 @@ def hybrid_recommend(req: HybridRecommendRequest):
                         "genre":   c_meta.get("genre", ""),
                         "q_score": round(float(q_val), 3),
                     })
-        except Exception as rl_err:
-            logger.warning(f"[Hybrid] RL Q-score augmentation failed (non-fatal): {rl_err}")
+        except Exception as dl_err:
+            logger.warning(f"[Hybrid] Deep ranking score augmentation failed (non-fatal): {dl_err}")
 
     # ── Build category summary ────────────────────────────────────────────────
     categories: Dict[str, List] = {}
@@ -1409,7 +1464,7 @@ def hybrid_recommend(req: HybridRecommendRequest):
         "categories":          {k: len(v) for k, v in categories.items()},
         "openspot_injected":   len(openspot_candidates),
         "total_candidates":    len(merged_candidates),
-        "active_pipeline":     "wolpertinger_rl" if agent is not None else "hybrid_heuristic",
+        "active_pipeline":     "deep_neural_ranker" if agent is not None else "hybrid_heuristic",
         "latency_ms":          round(total_latency_ms, 2),
     }
 
@@ -1420,7 +1475,7 @@ def run_simulation(req: SimulateRequest):
     env: SongRecEnv = STATE["env"]
     retrieval_model = STATE["retrieval_model"]
     vector_index = STATE["vector_index"]
-    agent = STATE["rl_agent"]
+    agent = STATE.get("deep_ranker") or STATE.get("rl_agent")
     fs = STATE["feature_store"]
 
     results = {}
@@ -1441,7 +1496,7 @@ def run_simulation(req: SimulateRequest):
             while not done:
                 u_emb = _get_user_embedding(fs, retrieval_model, env.current_user_id)
                 top_cand_ids, cand_scores, _ = vector_index.query(u_emb, top_k=50)
-                cand_indices = [fs.song_id_to_idx[sid] for sid in top_cand_ids]
+                cand_indices = [fs.song_id_to_idx[sid] for sid in top_cand_ids if sid in fs.song_id_to_idx]
 
                 if m_type == "random":
                     action = np.random.choice(cand_indices)

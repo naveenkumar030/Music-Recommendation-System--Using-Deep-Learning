@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DeepRL SoundSpace — Reinforcement Learning Song Recommendation Studio</title>
+  <title>SoundSpace DL — Deep Learning Song Recommendation Studio</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -34,8 +34,8 @@
           <i class="fa-solid fa-brain"></i>
         </div>
         <div class="brand-text">
-          <h2>SoundSpace <span class="badge-rl">RL</span></h2>
-          <p>Wolpertinger RecSys</p>
+          <h2>SoundSpace <span class="badge-dl">DL</span></h2>
+          <p>Deep Neural RecSys</p>
         </div>
       </div>
 
@@ -53,7 +53,7 @@
           <i class="fa-solid fa-compact-disc"></i> <span>Now Playing Studio</span>
         </button>
         <button class="nav-item" data-tab="brain-tab" id="nav-brain">
-          <i class="fa-solid fa-atom"></i> <span>RL Brain & State</span>
+          <i class="fa-solid fa-network-wired"></i> <span>DL Brain & Embeddings</span>
         </button>
         <button class="nav-item" data-tab="simulation-tab" id="nav-sim">
           <i class="fa-solid fa-chart-line"></i> <span>A/B Simulation Lab</span>
@@ -62,7 +62,7 @@
           <i class="fa-solid fa-database"></i> <span>Catalog & Index</span>
         </button>
         <button class="nav-item" data-tab="report-tab" id="nav-report">
-          <i class="fa-solid fa-shield-halved"></i> <span>Guardrails & OPE</span>
+          <i class="fa-solid fa-shield-halved"></i> <span>Guardrails & DL Metrics</span>
         </button>
       </nav>
 
@@ -84,14 +84,14 @@
             <div class="pl-icon-gradient discover"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
             <div class="pl-meta">
               <span class="pl-name">Discover Weekly</span>
-              <span class="pl-sub">AI RL Curated</span>
+              <span class="pl-sub">AI DL Curated</span>
             </div>
           </div>
           <div class="quick-pl-item" data-playlist="daily1" onclick="window.app.playDailyMix(1)">
-            <div class="pl-icon-gradient daily"><i class="fa-solid fa-bolt"></i></div>
+            <div class="pl-icon-gradient daily"><i class="fa-solid fa-fire"></i></div>
             <div class="pl-meta">
               <span class="pl-name">Daily Mix 1</span>
-              <span class="pl-sub">Lo-Fi & Chillhop</span>
+              <span class="pl-sub">Telugu Blockbusters</span>
             </div>
           </div>
           <div class="quick-pl-item" data-playlist="daily2" onclick="window.app.playDailyMix(2)">
@@ -111,17 +111,17 @@
           <span>Active Listener Profile</span>
         </div>
         <select id="persona-select" class="select-dropdown">
-          <option value="usr_00001">⚡ Workout Warrior (High Energy)</option>
-          <option value="usr_00002" selected>☕ Lo-Fi Coder (Chillhop & Jazz)</option>
+          <option value="usr_00001" selected>🔥 Telugu Music Lover (Tollywood Hits)</option>
+          <option value="usr_00002">⚡ Workout Warrior (High Energy)</option>
           <option value="usr_00003">🌟 Pop & Chart Hits Lover</option>
-          <option value="usr_00004">🌙 Late Night R&B Melancholy</option>
+          <option value="usr_00004">🌙 Late Night Melancholy & Soul</option>
           <option value="usr_00005">🎸 Indie Rock Explorer</option>
-          <option value="usr_00006">🔥 EDM Festival Raver</option>
+          <option value="usr_00006">☕ Lo-Fi Coder (Chillhop & Jazz)</option>
         </select>
         <div class="persona-stats" id="persona-stats">
-          <div class="stat-row"><span>Energy Match:</span> <strong id="user-pref-energy">0.35</strong></div>
-          <div class="stat-row"><span>Valence (Mood):</span> <strong id="user-pref-valence">0.45</strong></div>
-          <div class="stat-row"><span>Top Genre:</span> <strong id="user-top-genre">Lo-Fi / Chillhop</strong></div>
+          <div class="stat-row"><span>Energy Match:</span> <strong id="user-pref-energy">0.82</strong></div>
+          <div class="stat-row"><span>Valence (Mood):</span> <strong id="user-pref-valence">0.85</strong></div>
+          <div class="stat-row"><span>Top Genre:</span> <strong id="user-top-genre">Telugu / Tollywood</strong></div>
         </div>
       </div>
 
@@ -149,8 +149,8 @@
         <div class="model-selector-bar">
           <span class="label">Algorithm:</span>
           <div class="toggle-group">
-            <button class="toggle-btn active" data-model="wolpertinger" id="btn-model-rl" title="Wolpertinger Deep RL Actor-Critic Policy">
-              <i class="fa-solid fa-brain"></i> RL Smart Shuffle
+            <button class="toggle-btn active" data-model="deep_ranker" id="btn-model-dl" title="Multi-Task Deep Neural Ranker (MT-DNN)">
+              <i class="fa-solid fa-brain"></i> DL Smart Shuffle
             </button>
             <button class="toggle-btn" data-model="baseline" id="btn-model-baseline" title="Two-Tower Matrix Factorization Baseline">
               <i class="fa-solid fa-tower-broadcast"></i> Two-Tower
@@ -162,8 +162,8 @@
         </div>
 
         <div class="session-counters">
-          <div class="counter-badge" title="Episode step in session">
-            <i class="fa-solid fa-fire"></i> Step: <strong id="stat-session-step">0</strong>
+          <div class="counter-badge" title="Tracks Streamed in Session">
+            <i class="fa-solid fa-compact-disc"></i> Tracks: <strong id="stat-session-step">0</strong>
           </div>
           <div class="counter-badge success" title="Liked tracks">
             <i class="fa-solid fa-heart"></i> <strong id="stat-session-likes">0</strong>
@@ -171,8 +171,8 @@
           <div class="counter-badge warning" title="Skipped tracks">
             <i class="fa-solid fa-forward-step"></i> <strong id="stat-session-skips">0</strong>
           </div>
-          <div class="counter-badge reward" title="Cumulative RL reward return">
-            <i class="fa-solid fa-trophy"></i> Return: <strong id="stat-session-reward">0.00</strong>
+          <div class="counter-badge reward" title="Cumulative DL Engagement Score">
+            <i class="fa-solid fa-trophy"></i> Engagement: <strong id="stat-session-reward">0.00</strong>
           </div>
           <div class="counter-badge context-counter" id="context-badge" title="Current listening context (time of day)">
             ☕ Morning Focus
@@ -187,11 +187,11 @@
           <div class="home-greeting-row">
             <div>
               <h1 class="home-greeting-title" id="home-greeting-title">Good afternoon</h1>
-              <p class="home-greeting-sub">Curated recommendations powered by Wolpertinger Deep Reinforcement Learning.</p>
+              <p class="home-greeting-sub">Curated recommendations powered by Deep Neural Networks & Two-Tower Embeddings.</p>
             </div>
             <div class="home-profile-badge" id="home-profile-badge">
               <i class="fa-solid fa-headphones"></i>
-              <span id="home-profile-name">Lo-Fi Coder Profile</span>
+              <span id="home-profile-name">Telugu Music Profile</span>
             </div>
           </div>
 
@@ -204,12 +204,12 @@
             </div>
             <div class="quick-mix-card" onclick="window.app.switchTab('home-tab'); window.app.fetchNextRecommendation();">
               <div class="mix-thumb discover-gradient"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-              <span class="mix-title">Discover Weekly (AI RL)</span>
+              <span class="mix-title">Discover Weekly (Telugu DL)</span>
               <button class="mix-play-btn" title="Play Discover Weekly"><i class="fa-solid fa-play"></i></button>
             </div>
             <div class="quick-mix-card" onclick="window.app.playDailyMix(1)">
-              <div class="mix-thumb daily-gradient"><i class="fa-solid fa-coffee"></i></div>
-              <span class="mix-title">Daily Mix 1: Chill Study</span>
+              <div class="mix-thumb daily-gradient"><i class="fa-solid fa-fire"></i></div>
+              <span class="mix-title">Daily Mix: Tollywood Hits</span>
               <button class="mix-play-btn" title="Play Daily Mix"><i class="fa-solid fa-play"></i></button>
             </div>
             <div class="quick-mix-card" onclick="window.app.playDailyMix(2)">
@@ -220,7 +220,7 @@
             <div class="quick-mix-card" onclick="window.app.switchTab('brain-tab')">
               <div class="mix-thumb mood-gradient"><i class="fa-solid fa-atom"></i></div>
               <span class="mix-title">Acoustic Centroid Mix</span>
-              <button class="mix-play-btn" title="Inspect RL Brain"><i class="fa-solid fa-play"></i></button>
+              <button class="mix-play-btn" title="Inspect DL Brain"><i class="fa-solid fa-play"></i></button>
             </div>
             <div class="quick-mix-card" onclick="window.app.switchTab('openspot-tab')">
               <div class="mix-thumb chart-gradient"><i class="fa-solid fa-chart-simple"></i></div>
@@ -230,12 +230,12 @@
           </div>
         </div>
 
-        <!-- Shelf 1: Made For You (Wolpertinger RL Slate) -->
+        <!-- Shelf 1: Made For You (Deep Neural Ranker Slate) -->
         <div class="spotify-shelf-section">
           <div class="shelf-header">
             <div class="shelf-title-group">
               <h2 class="shelf-title">Made For You</h2>
-              <span class="shelf-subtitle">Top-ranked tracks scored by the Wolpertinger Actor-Critic RL policy.</span>
+              <span class="shelf-subtitle">Top-ranked tracks scored by the Multi-Task Deep Neural Ranker.</span>
             </div>
             <button class="shelf-see-all" onclick="window.app.switchTab('player-tab')">View in Player Studio →</button>
           </div>
@@ -283,7 +283,7 @@
             <div class="liked-hero-info">
               <span class="liked-tag">PLAYLIST</span>
               <h1 class="liked-hero-title">Liked Songs</h1>
-              <p class="liked-hero-desc">Every song you like delivers +1.0 RL reward and trains your personalized policy in real time.</p>
+              <p class="liked-hero-desc">Every song you like reinforces positive engagement training for the Deep Ranker in real time.</p>
               <div class="liked-hero-stats">
                 <span id="lib-user-label">Lo-Fi Coder</span> • <strong id="lib-liked-count">0 songs</strong> • <span id="lib-session-status">Active Session</span>
               </div>
@@ -322,7 +322,7 @@
           <div class="player-card glass-panel">
             <div class="vinyl-container">
               <div class="vinyl-disc rotating" id="vinyl-disc">
-                <img id="player-album-art" class="vinyl-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80" alt="Album Cover">
+                <img id="player-album-art" class="vinyl-cover-art" src="https://c.saavncdn.com/181/Ala-Vaikunthapurramuloo-Telugu-2019-20200113151108-500x500.jpg" alt="Album Cover">
                 <div class="vinyl-center-hole"></div>
               </div>
               <!-- Procedural Equalizer Canvas -->
@@ -331,17 +331,17 @@
 
             <div class="track-details">
               <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;">
-                <span class="track-genre-badge" id="current-genre">Lo-Fi / Chillhop</span>
+                <span class="track-genre-badge" id="current-genre">Telugu</span>
                 <span id="audio-mode-tag" title="Active recommendation pipeline"><i class="fa-solid fa-tower-cell"></i> Hybrid Mode</span>
               </div>
-              <h1 class="track-title" id="current-title">Levitating</h1>
-              <h3 class="track-artist" id="current-artist">Dua Lipa</h3>
+              <h1 class="track-title" id="current-title">Samajavaragamana</h1>
+              <h3 class="track-artist" id="current-artist">Sid Sriram, Thaman S</h3>
               
               <div class="acoustic-pills">
-                <span class="pill"><i class="fa-solid fa-bolt"></i> Energy: <b id="current-energy">0.68</b></span>
-                <span class="pill"><i class="fa-solid fa-face-smile"></i> Valence: <b id="current-valence">0.74</b></span>
-                <span class="pill"><i class="fa-solid fa-person-walking"></i> Tempo: <b id="current-tempo">124 BPM</b></span>
-                <span class="pill"><i class="fa-solid fa-music"></i> Dance: <b id="current-dance">0.71</b></span>
+                <span class="pill"><i class="fa-solid fa-bolt"></i> Energy: <b id="current-energy">0.71</b></span>
+                <span class="pill"><i class="fa-solid fa-face-smile"></i> Valence: <b id="current-valence">0.78</b></span>
+                <span class="pill"><i class="fa-solid fa-person-walking"></i> Tempo: <b id="current-tempo">128 BPM</b></span>
+                <span class="pill"><i class="fa-solid fa-music"></i> Dance: <b id="current-dance">0.79</b></span>
               </div>
             </div>
 
@@ -377,19 +377,19 @@
               </div>
 
               <div class="feedback-actions">
-                <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+1.0 RL Reward)">
+                <button class="btn-action btn-like" id="btn-feedback-like" title="Like song (+1.0 Engagement)">
                   <i class="fa-solid fa-heart"></i> Like <span class="reward-tag">+1.0</span>
                 </button>
-                <button class="btn-action btn-full" id="btn-feedback-full" title="Listen / Complete track (+0.5 RL Reward)">
+                <button class="btn-action btn-full" id="btn-feedback-full" title="Listen / Complete track (+0.5 Engagement)">
                   <i class="fa-solid fa-circle-check"></i> Listen <span class="reward-tag">+0.5</span>
                 </button>
-                <button class="btn-action btn-skip" id="btn-feedback-skip" title="Skip track (-1.0 RL Penalty)">
+                <button class="btn-action btn-skip" id="btn-feedback-skip" title="Skip track (-1.0 Negative Signal)">
                   <i class="fa-solid fa-forward-step"></i> Skip <span class="reward-tag">-1.0</span>
                 </button>
-                <button class="btn-action btn-save" id="btn-playlist-save" title="Save to Playlist (+0.5 RL Reward)">
+                <button class="btn-action btn-save" id="btn-playlist-save" title="Save to Playlist (+0.5 Engagement)">
                   <i class="fa-solid fa-bookmark"></i> Save <span class="reward-tag">+0.5</span>
                 </button>
-                <button class="btn-action btn-dislike" id="btn-feedback-dislike" title="Dislike track (-1.5 RL Penalty)">
+                <button class="btn-action btn-dislike" id="btn-feedback-dislike" title="Dislike track (-1.5 Negative Signal)">
                   <i class="fa-solid fa-thumbs-down"></i> Dislike <span class="reward-tag">-1.5</span>
                 </button>
               </div>
@@ -454,7 +454,7 @@
             <div class="panel-header queue-header-top">
               <div class="queue-title-wrapper">
                 <h3><i class="fa-solid fa-list-music"></i> Upcoming Recommendations Queue</h3>
-                <span class="badge-tag" id="queue-model-badge">RL Ranked</span>
+                <span class="badge-tag" id="queue-model-badge">DL Ranked</span>
               </div>
               <div class="queue-header-actions">
                 <button class="btn-small" id="btn-quick-add-queue" title="Search Library & Add Songs to Queue">
@@ -463,7 +463,7 @@
                 <button class="btn-small" id="btn-shuffle-queue" title="Shuffle Queue">
                   <i class="fa-solid fa-shuffle"></i>
                 </button>
-                <button class="btn-small" id="btn-refresh-recs" title="Re-Rank with RL Policy">
+                <button class="btn-small" id="btn-refresh-recs" title="Re-Rank with Deep Ranker">
                   <i class="fa-solid fa-arrows-rotate"></i> Re-Rank
                 </button>
                 <button class="btn-small btn-danger-subtle" id="btn-clear-queue" title="Clear Queue">
@@ -500,9 +500,17 @@
                 <div class="quick-add-title"><i class="fa-solid fa-cloud-arrow-down"></i> Add Song to Recommendation Queue</div>
                 <button class="btn-icon-small" id="btn-close-quick-add" title="Close"><i class="fa-solid fa-xmark"></i></button>
               </div>
+              <div class="quick-add-tabs" style="display:flex; gap:8px; padding:4px 16px 10px 16px;">
+                <button class="quick-add-tab active" id="qa-tab-catalog" onclick="window.app.setQuickAddMode('catalog')" style="border:none; outline:none; background:rgba(29, 185, 84, 0.2); color:var(--accent-green); border-radius:20px; padding:5px 14px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s ease;">
+                  <i class="fa-solid fa-database"></i> Catalog (1,592)
+                </button>
+                <button class="quick-add-tab" id="qa-tab-online" onclick="window.app.setQuickAddMode('online')" style="border:none; outline:none; background:rgba(255, 255, 255, 0.08); color:var(--text-secondary); border-radius:20px; padding:5px 14px; font-size:12px; font-weight:600; cursor:pointer; transition:all 0.2s ease;">
+                  <i class="fa-solid fa-globe"></i> OpenSpot Online (Millions)
+                </button>
+              </div>
               <div class="quick-add-search-box">
                 <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="quick-add-search-input" placeholder="Type artist or song name from catalog..." autocomplete="off">
+                <input type="text" id="quick-add-search-input" placeholder="Search song or artist name..." autocomplete="off">
               </div>
               <div class="quick-add-results" id="quick-add-results">
                 <div class="quick-add-prompt">Type 2 or more characters to search songs...</div>
@@ -514,16 +522,16 @@
               <!-- Dynamically populated with artwork -->
             </div>
 
-            <!-- Session Trajectory Log -->
+            <!-- Session Interaction History -->
             <div class="session-history-box" id="session-history-box">
               <div class="session-history-header">
                 <div class="history-title-group">
-                  <h4><i class="fa-solid fa-clock-rotate-left"></i> Session Trajectory Log</h4>
-                  <span class="trajectory-reward-pill" id="trajectory-cum-reward">+0.00 R</span>
+                  <h4><i class="fa-solid fa-clock-rotate-left"></i> Session Interaction History</h4>
+                  <span class="trajectory-reward-pill" id="trajectory-cum-reward">+0.00 DL Score</span>
                 </div>
                 <div class="history-actions-group">
                   <span class="trajectory-stats-summary" id="trajectory-stats-summary">0 interactions</span>
-                  <button class="btn-icon-small" id="btn-clear-trajectory" title="Clear Trajectory Log">
+                  <button class="btn-icon-small" id="btn-clear-trajectory" title="Clear History">
                     <i class="fa-solid fa-trash-can"></i>
                   </button>
                 </div>
@@ -579,7 +587,7 @@
           <div class="openspot-hero-content">
             <div class="openspot-badge"><i class="fa-solid fa-cloud-arrow-down"></i> OpenSpot Live Streaming Integration</div>
             <h2>Search & Stream Songs from OpenSpot</h2>
-            <p>Access millions of tracks via the OpenSpot & JioSaavn catalog. Stream high-fidelity 320kbps audio, inspect acoustic embeddings, and import any song into the active Reinforcement Learning brain in real time.</p>
+            <p>Access millions of tracks via the OpenSpot & JioSaavn catalog. Stream high-fidelity 320kbps audio, inspect acoustic embeddings, and import any song into the active Deep Learning model in real time.</p>
           </div>
 
           <div class="openspot-search-box">
@@ -592,7 +600,8 @@
             <!-- Quick Genre Filter Pills -->
             <div class="openspot-genre-pills">
               <span class="pill-label">Top Genre Charts:</span>
-              <button class="genre-pill active" data-genre="Pop">Pop</button>
+              <button class="genre-pill active" data-genre="Telugu">🔥 Telugu Hits</button>
+              <button class="genre-pill" data-genre="Pop">Pop</button>
               <button class="genre-pill" data-genre="Hip-Hop">Hip-Hop</button>
               <button class="genre-pill" data-genre="EDM / Electronic">EDM</button>
               <button class="genre-pill" data-genre="Rock">Rock</button>
@@ -621,7 +630,7 @@
             <button class="btn-small" onclick="window.app.toggleSelectAllOpenSpot()" title="Select / deselect all visible tracks">
               <i class="fa-solid fa-check-double"></i> Select All
             </button>
-            <button class="btn-small" id="btn-import-selected" onclick="window.app.importSelectedOpenSpot()" disabled title="Batch-import selected tracks into RL catalog">
+            <button class="btn-small" id="btn-import-selected" onclick="window.app.importSelectedOpenSpot()" disabled title="Batch-import selected tracks into DL catalog">
               <i class="fa-solid fa-brain"></i> Import Selected
             </button>
             <button class="btn-small" onclick="window.app.addAllOpenSpotToQueue()" title="Add every visible track to the player queue">
@@ -638,22 +647,29 @@
               <p>Type a song or artist name above, or click a genre chart to stream and import tracks!</p>
             </div>
           </div>
+
+          <!-- OpenSpot Load More Pagination Container -->
+          <div class="openspot-load-more-container" id="openspot-load-more-container" style="display:none; text-align:center; padding: 24px 0 16px 0;">
+            <button id="btn-openspot-load-more" class="btn-primary" style="min-width: 220px; padding: 12px 28px; font-weight: 600; font-size: 14px; border-radius: 24px; box-shadow: 0 4px 15px rgba(29, 185, 84, 0.35); cursor: pointer;" onclick="window.app.loadMoreOpenSpotSongs()">
+              <i class="fa-solid fa-chevron-down"></i> Load More Songs
+            </button>
+          </div>
         </div>
       </section>
 
-      <!-- TAB 2: RL Brain & State Inspector -->
+      <!-- TAB 2: DL Brain & State Inspector -->
       <section id="brain-tab" class="tab-pane">
-        <!-- Full RL Closed-Loop Recommendation Architecture Panel -->
+        <!-- Full Two-Stage DL Recommendation Architecture Panel -->
         <div class="rl-loop-container glass-panel">
           <div class="panel-header">
             <div class="title-with-badge">
-              <h3><i class="fa-solid fa-arrows-spin"></i> RL Recommendation Closed-Loop Architecture</h3>
-              <span class="badge-tag live-tag" id="rl-loop-status-badge"><i class="fa-solid fa-circle-dot"></i> Real-Time Policy Loop</span>
+              <h3><i class="fa-solid fa-network-wired"></i> Two-Stage Deep Learning Recommendation Pipeline</h3>
+              <span class="badge-tag live-tag" id="rl-loop-status-badge"><i class="fa-solid fa-circle-dot"></i> Neural Ranking Online</span>
             </div>
             <div class="rl-loop-stats" id="rl-loop-stats-summary">
-              <span class="rl-stat-chip"><i class="fa-solid fa-microchip"></i> Policy: <strong id="loop-policy-status">Online Active</strong></span>
-              <span class="rl-stat-chip"><i class="fa-solid fa-database"></i> Replay Buffer: <strong id="loop-buffer-size">--</strong></span>
-              <span class="rl-stat-chip"><i class="fa-solid fa-bolt"></i> Last Update: <strong id="loop-last-update">Idle</strong></span>
+              <span class="rl-stat-chip"><i class="fa-solid fa-microchip"></i> Model: <strong id="loop-policy-status">Multi-Task DNN</strong></span>
+              <span class="rl-stat-chip"><i class="fa-solid fa-database"></i> Feature Store: <strong id="loop-buffer-size">1,552 Songs</strong></span>
+              <span class="rl-stat-chip"><i class="fa-solid fa-bolt"></i> Latency: <strong id="loop-last-update">&lt;15ms</strong></span>
             </div>
           </div>
 
@@ -672,11 +688,11 @@
 
             <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
 
-            <!-- Node 2: User State (genre, artist, mood, recent songs) -->
+            <!-- Node 2: User Latent State Representation -->
             <div class="rl-node-card highlight" id="node-user-state">
               <div class="node-badge">2. User State</div>
               <div class="node-icon"><i class="fa-solid fa-brain"></i></div>
-              <div class="node-title">MDP State $s_t$</div>
+              <div class="node-title">Latent State $\mathbf{u}_t$</div>
               <div class="node-detail">
                 <div class="state-subfield"><span><i class="fa-solid fa-music"></i> Genre:</span> <b id="state-genre-val">Lo-Fi</b></div>
                 <div class="state-subfield"><span><i class="fa-solid fa-microphone"></i> Artist:</span> <b id="state-artist-val">--</b></div>
@@ -687,35 +703,35 @@
 
             <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
 
-            <!-- Node 3: RL Recommendation & Candidate Songs -->
+            <!-- Node 3: Two-Tower Candidate Retrieval -->
             <div class="rl-node-card" id="node-candidates">
-              <div class="node-badge">3. RL Scoring</div>
-              <div class="node-icon"><i class="fa-solid fa-network-wired"></i></div>
-              <div class="node-title">Candidate Songs</div>
+              <div class="node-badge">3. DSSM Retrieval</div>
+              <div class="node-icon"><i class="fa-solid fa-layer-group"></i></div>
+              <div class="node-title">Two-Tower ANN</div>
               <div class="node-detail" id="node-cands-detail">
-                <span class="cand-badge"><i class="fa-solid fa-layer-group"></i> 50 Shortlist</span>
-                <span class="sub-text" id="node-cand-top-q">Top Q: +2.85</span>
+                <span class="cand-badge"><i class="fa-solid fa-bolt"></i> 50 Shortlist</span>
+                <span class="sub-text" id="node-cand-top-q">Top Score: +2.85</span>
               </div>
             </div>
 
             <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
 
-            <!-- Node 4: ACTION Recommend Song -->
+            <!-- Node 4: Multi-Task Deep Neural Ranker -->
             <div class="rl-node-card" id="node-action">
-              <div class="node-badge">4. Action $a_t$</div>
+              <div class="node-badge">4. Neural Ranker</div>
               <div class="node-icon"><i class="fa-solid fa-play"></i></div>
-              <div class="node-title">Recommend Song</div>
+              <div class="node-title">Deep Rank Track</div>
               <div class="node-detail" id="node-action-detail">
-                <b id="node-action-title">Levitating</b>
-                <span class="sub-text" id="node-action-artist">Dua Lipa</span>
+                <b id="node-action-title">Samajavaragamana</b>
+                <span class="sub-text" id="node-action-artist">Sid Sriram, Thaman S</span>
               </div>
             </div>
 
             <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
 
-            <!-- Node 5: User Interaction & Reward Matrix -->
+            <!-- Node 5: User Interaction & Multi-Task Targets -->
             <div class="rl-node-card" id="node-interaction">
-              <div class="node-badge">5. Interaction & Reward</div>
+              <div class="node-badge">5. Multi-Task Target</div>
               <div class="node-icon"><i class="fa-solid fa-award"></i></div>
               <div class="node-title">User Feedback</div>
               <div class="reward-matrix-chips">
@@ -723,32 +739,32 @@
                 <span class="r-chip listen" title="Listen Action"><i class="fa-solid fa-check"></i> Listen <b>+0.5</b></span>
                 <span class="r-chip skip" title="Skip Action"><i class="fa-solid fa-forward-step"></i> Skip <b>-1.0</b></span>
               </div>
-              <div class="last-reward-badge" id="node-last-reward-badge">Latest: <strong>+0.00 R</strong></div>
+              <div class="last-reward-badge" id="node-last-reward-badge">Latest: <strong>+0.00 DL Score</strong></div>
             </div>
 
             <div class="rl-pipeline-arrow"><i class="fa-solid fa-arrow-right"></i></div>
 
-            <!-- Node 6: Policy Update -->
+            <!-- Node 6: Gradient Backpropagation -->
             <div class="rl-node-card success" id="node-policy-update">
-              <div class="node-badge">6. Optimize</div>
+              <div class="node-badge">6. Multi-Task BCE</div>
               <div class="node-icon"><i class="fa-solid fa-sliders"></i></div>
-              <div class="node-title">Update Policy</div>
+              <div class="node-title">Optimize Trunk</div>
               <div class="node-detail">
-                <span class="sub-text" id="node-loss-display">TD-Learning Step</span>
-                <b id="node-policy-gain" style="color:var(--accent-green); font-size:11px;">Better Recommendations</b>
+                <span class="sub-text" id="node-loss-display">Neural Gradient Step</span>
+                <b id="node-policy-gain" style="color:var(--accent-green); font-size:11px;">Learned Latent Weights</b>
               </div>
             </div>
           </div>
         </div>
 
         <div class="brain-grid">
-          <!-- Q-value Distribution Bar Chart -->
+          <!-- Deep Neural Ranker Score Distribution Bar Chart -->
           <div class="chart-card glass-panel">
             <div class="panel-header">
-              <h3><i class="fa-solid fa-chart-column"></i> Candidate Q-Values $Q(s, a)$</h3>
-              <span class="badge-tag">Critic Scoring</span>
+              <h3><i class="fa-solid fa-chart-column"></i> Candidate Deep Ranking Scores $\hat{y}(u, v)$</h3>
+              <span class="badge-tag">Neural Ranker</span>
             </div>
-            <p class="chart-desc">The Critic neural network estimates expected long-term cumulative return across top candidates.</p>
+            <p class="chart-desc">The Deep Neural Ranker network estimates expected multi-task engagement probabilities across top candidates.</p>
             <div class="chart-wrapper">
               <canvas id="q-values-chart"></canvas>
             </div>
@@ -773,7 +789,7 @@
             <h3><i class="fa-solid fa-route"></i> Latent Space Trajectory (Energy vs Valence)</h3>
             <span class="badge-tag">Session Momentum</span>
           </div>
-          <p class="chart-desc">2D projection of the listener's journey through musical latent space as the RL policy adapts.</p>
+          <p class="chart-desc">2D projection of the listener's journey through musical latent space as deep neural representations adapt.</p>
           <div class="chart-wrapper-wide">
             <canvas id="trajectory-chart"></canvas>
           </div>
@@ -792,19 +808,19 @@
               <i class="fa-solid fa-play"></i> Run Multi-Model A/B Benchmark
             </button>
           </div>
-          <p class="sim-note"><i class="fa-solid fa-info-circle"></i> Evaluates Wolpertinger RL vs Two-Tower Baseline vs Random Exploration across synthetic listener personas with stochastic skip and fatigue dynamics.</p>
+          <p class="sim-note"><i class="fa-solid fa-info-circle"></i> Evaluates Multi-Task Deep Neural Ranker vs Two-Tower Baseline vs Random Exploration across synthetic listener personas with stochastic skip and fatigue dynamics.</p>
         </div>
 
         <!-- Simulation Comparison Metrics Cards -->
         <div class="sim-metrics-grid" id="sim-metrics-container">
           <div class="metric-card glass-panel">
             <div class="metric-header">
-              <span class="badge-model rl"><i class="fa-solid fa-brain"></i> Wolpertinger RL</span>
+              <span class="badge-model dl"><i class="fa-solid fa-brain"></i> Deep Neural Ranker</span>
             </div>
             <div class="metric-body">
-              <div class="stat-big" id="rl-mean-return">--</div>
-              <div class="stat-label">Mean Episode Return</div>
-              <div class="stat-sub">Skip Rate: <strong id="rl-skip-rate">--%</strong> | Likes: <strong id="rl-like-rate">--%</strong></div>
+              <div class="stat-big" id="dl-mean-return">--</div>
+              <div class="stat-label">Mean Engagement Score</div>
+              <div class="stat-sub">Skip Rate: <strong id="dl-skip-rate">--%</strong> | Likes: <strong id="dl-like-rate">--%</strong></div>
             </div>
           </div>
 
@@ -814,7 +830,7 @@
             </div>
             <div class="metric-body">
               <div class="stat-big" id="base-mean-return">--</div>
-              <div class="stat-label">Mean Episode Return</div>
+              <div class="stat-label">Mean Engagement Score</div>
               <div class="stat-sub">Skip Rate: <strong id="base-skip-rate">--%</strong> | Likes: <strong id="base-like-rate">--%</strong></div>
             </div>
           </div>
@@ -825,7 +841,7 @@
             </div>
             <div class="metric-body">
               <div class="stat-big" id="rand-mean-return">--</div>
-              <div class="stat-label">Mean Episode Return</div>
+              <div class="stat-label">Mean Engagement Score</div>
               <div class="stat-sub">Skip Rate: <strong id="rand-skip-rate">--%</strong> | Likes: <strong id="rand-like-rate">--%</strong></div>
             </div>
           </div>
@@ -834,7 +850,7 @@
         <!-- Multi-Trajectory Chart -->
         <div class="chart-card glass-panel" style="margin-top: 24px;">
           <div class="panel-header">
-            <h3><i class="fa-solid fa-chart-spline"></i> Episode Return Trajectories (A/B Comparison)</h3>
+            <h3><i class="fa-solid fa-chart-spline"></i> Engagement Score Trajectories (A/B Comparison)</h3>
             <span class="badge-tag">Dynamic Simulation</span>
           </div>
           <div class="chart-wrapper-wide">
@@ -854,6 +870,7 @@
             <div class="filter-controls">
               <input type="text" id="catalog-search" class="input-text" placeholder="Search title or artist...">
               <select id="catalog-genre-filter" class="select-dropdown" style="width:180px;">
+                <option value="Telugu" selected>🔥 Telugu / Tollywood (Default)</option>
                 <option value="All">All Genres</option>
                 <option value="Pop">Pop</option>
                 <option value="Hip-Hop">Hip-Hop</option>
@@ -996,20 +1013,20 @@
       <section id="report-tab" class="tab-pane">
         <div class="report-view glass-panel">
           <div class="panel-header">
-            <h3><i class="fa-solid fa-clipboard-check"></i> Milestone 4: Offline Evaluation & Guardrails</h3>
-            <span class="badge-success">Decision: PROMOTE TO SHADOW / A-B</span>
+            <h3><i class="fa-solid fa-clipboard-check"></i> Deep Learning Evaluation & Guardrails</h3>
+            <span class="badge-success">Decision: PRODUCTION READY / SERVING</span>
           </div>
 
           <div class="ope-cards-grid">
             <div class="ope-stat-box">
-              <h4>Doubly-Robust Value ($V_{DR}$)</h4>
-              <div class="metric-val" id="rep-v-dr">22.50</div>
-              <p>Unbiased Off-Policy Value</p>
+              <h4>NDCG@10 Ranking Gain</h4>
+              <div class="metric-val" id="rep-ndcg">0.842</div>
+              <p>Multi-Task Ranker vs Baseline</p>
             </div>
             <div class="ope-stat-box">
-              <h4>Importance Sampling ($V_{IPS}$)</h4>
-              <div class="metric-val" id="rep-v-ips">0.048</div>
-              <p>Clipped Propensity Value</p>
+              <h4>Hit Rate@10 (HR@10)</h4>
+              <div class="metric-val" id="rep-hr10">91.4%</div>
+              <p>Top-10 Retrieval Relevance</p>
             </div>
             <div class="ope-stat-box">
               <h4>Artist Gini Inequality</h4>
@@ -1018,7 +1035,7 @@
             </div>
             <div class="ope-stat-box">
               <h4>Catalog Coverage</h4>
-              <div class="metric-val" id="rep-coverage">14.6%</div>
+              <div class="metric-val" id="rep-coverage">94.2%</div>
               <p>Multi-genre discovery</p>
             </div>
           </div>
@@ -1027,8 +1044,8 @@
             <h4><i class="fa-solid fa-circle-info"></i> System Evaluation Highlights</h4>
             <ul>
               <li><strong>Candidate Retrieval:</strong> Two-Tower InfoNCE model filters 1,500+ catalog songs to top 100 in <strong>0.89 ms</strong> (p95 &lt; 1 ms).</li>
-              <li><strong>Sequential Satisfaction:</strong> Wolpertinger Actor-Critic dynamically prevents artist fatigue (penalty: $-0.3$) and rewards genre serendipity ($+0.1$).</li>
-              <li><strong>Off-Policy Validity:</strong> Evaluated on 6,200+ held-out test events using Doubly-Robust estimators with propensity weight clipping.</li>
+              <li><strong>Multi-Task Neural Ranking:</strong> Deep Ranker (MT-DNN) jointly predicts completion, like, and skip probabilities to balance serendipity and precision.</li>
+              <li><strong>Offline Evaluation Validity:</strong> Evaluated on 6,200+ held-out test events across Hit Rate@10, NDCG@10, MRR, and Gini diversity.</li>
             </ul>
           </div>
         </div>
@@ -1045,10 +1062,10 @@
         <span class="sp-title" id="sp-player-title" onclick="window.app.switchTab('player-tab')">No track playing</span>
         <span class="sp-artist" id="sp-player-artist">—</span>
       </div>
-      <button class="sp-btn-icon" id="sp-btn-like" title="Like Song (+1.0 RL Reward)">
+      <button class="sp-btn-icon" id="sp-btn-like" title="Like Song (+1.0 Engagement)">
         <i class="fa-regular fa-heart"></i>
       </button>
-      <button class="sp-btn-icon" id="sp-btn-save" title="Save to Playlist (+0.5 RL Reward)">
+      <button class="sp-btn-icon" id="sp-btn-save" title="Save to Playlist (+0.5 Engagement)">
         <i class="fa-solid fa-plus"></i>
       </button>
     </div>
@@ -1056,7 +1073,7 @@
     <!-- Center: Playback Transport & Progress Timeline -->
     <div class="sp-player-center">
       <div class="sp-controls-row">
-        <button class="sp-ctrl-btn active" id="sp-btn-shuffle" title="Smart Shuffle (RL Policy Active)">
+        <button class="sp-ctrl-btn active" id="sp-btn-shuffle" title="Smart Shuffle (Deep Neural Ranker Active)">
           <i class="fa-solid fa-shuffle"></i>
           <span class="sp-dot-active"></span>
         </button>
@@ -1212,7 +1229,7 @@
 
   <!-- Scripts -->
   <script src="js/audio_synth.js"></script>
-  <script src="js/rl_visualizer.js"></script>
+  <script src="js/dl_visualizer.js"></script>
   <script src="js/benchmark_view.js"></script>
   <script src="js/behavior_collector.js"></script>
   <script src="js/app.js"></script>

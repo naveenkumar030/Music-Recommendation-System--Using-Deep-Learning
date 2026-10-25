@@ -1,5 +1,5 @@
 """
-Lyrics Service for SoundSpace RL Music Recommendation Studio.
+Lyrics Service for SoundSpace DL Music Recommendation Studio.
 
 Provides:
 - Real-time synchronized lyrics (LRC format [mm:ss.xx]) from LRCLIB API.
@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-USER_AGENT = "SoundSpaceRLMusicPlayer/1.0 (https://github.com/soundspace-rl)"
+USER_AGENT = "SoundSpaceDLMusicPlayer/1.0 (https://github.com/soundspace-dl)"
 
 
 def clean_search_title(title: str) -> str:
@@ -103,7 +103,14 @@ class LyricsService:
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        duration_sec = int((duration_ms or 210000) / 1000)
+        import math
+        try:
+            if duration_ms is None or math.isnan(float(duration_ms)):
+                duration_sec = 210
+            else:
+                duration_sec = max(30, int(float(duration_ms) / 1000))
+        except (ValueError, TypeError):
+            duration_sec = 210
 
         # 1. Try LRCLIB (Direct exact & fuzzy)
         lyrics_data = self._fetch_from_lrclib(title, artist, duration_sec)

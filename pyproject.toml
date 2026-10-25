@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "song-rl-recommender"
-version = "0.1.0"
-description = "A session-aware, Reinforcement Learning based song recommendation system"
+name = "music-dl-recommender"
+version = "0.2.0"
+description = "A session-aware, Deep Learning based music recommendation system using Two-Tower DSSM and Multi-Task Deep Neural Re-Ranking"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -25,3 +25,4 @@ dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+pythonpath = ["."]

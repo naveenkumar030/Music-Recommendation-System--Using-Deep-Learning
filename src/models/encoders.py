@@ -1,5 +1,5 @@
 """
-Session and State Encoders for RL Policies.
+Session and State Encoders for Deep Learning Recommendation Models.
 
 Provides:
 - GRUSessionEncoder: 2-layer GRU encoding sequential (track_embedding, feedback_vector) pairs.

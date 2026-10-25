@@ -38,7 +38,7 @@ def genre_novelty_bonus(genre: str, recent_genres: List[str]) -> float:
 
 def compute_reward(event: PlaybackEvent, session_history: List[PlaybackEvent]) -> float:
     """
-    Computes MDP reward following the RL recommendation formulation:
+    Computes listener engagement utility following the multi-objective interaction formulation:
     - no_skip (Listen): +0.5
     - skip_early (Skip): -1.0
     - skip_late: -0.2

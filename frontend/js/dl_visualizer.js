@@ -1,8 +1,8 @@
 /**
- * RL Brain Visualizer: Q-value charts, Feature Radar, and 2D Latent Space Trajectory.
+ * Deep Learning Visualizer: Multi-Task Neural Ranker Scores, Acoustic Radar, and Latent Space Trajectory.
  */
 
-class RLVisualizer {
+class DLVisualizer {
   constructor() {
     this.qChart = null;
     this.radarChart = null;
@@ -14,7 +14,7 @@ class RLVisualizer {
   }
 
   initCharts() {
-    // 1. Q-Values Bar Chart
+    // 1. Predicted Deep Scores Bar Chart
     const qCtx = document.getElementById('q-values-chart');
     if (qCtx) {
       this.qChart = new Chart(qCtx, {
@@ -22,7 +22,7 @@ class RLVisualizer {
         data: {
           labels: ['Cand 1', 'Cand 2', 'Cand 3', 'Cand 4', 'Cand 5', 'Cand 6'],
           datasets: [{
-            label: 'Predicted Q(s, a)',
+            label: 'Predicted Score',
             data: [2.8, 2.4, 2.1, 1.8, 1.2, 0.9],
             backgroundColor: 'rgba(168, 85, 247, 0.7)',
             borderColor: '#a855f7',
@@ -104,7 +104,7 @@ class RLVisualizer {
   updateQChart(qDist) {
     if (!this.qChart || !qDist || qDist.length === 0) return;
     const labels = qDist.map(d => d.title.length > 14 ? d.title.substring(0, 12) + '..' : d.title);
-    const values = qDist.map(d => d.q_score);
+    const values = qDist.map(d => d.deep_score !== undefined ? d.deep_score : d.q_score);
 
     this.qChart.data.labels = labels;
     this.qChart.data.datasets[0].data = values;
@@ -216,9 +216,9 @@ class RLVisualizer {
   }
 
   /**
-   * Updates the interactive RL Recommendation & Policy Loop architecture card in real time.
+   * Updates the interactive Deep Learning Recommendation Pipeline architecture card in real time.
    */
-  updateRLStateLoop(userState, qDist, lastFeedback, policyMetrics) {
+  updateDLStateLoop(userState, qDist, lastFeedback, policyMetrics) {
     if (!userState) return;
 
     // 1. User & History Node
@@ -251,10 +251,11 @@ class RLVisualizer {
       }
     }
 
-    // 3. Candidate Songs & Q-Ranking
+    // 3. Candidate Songs & Neural Ranking
     const topQEl = document.getElementById('node-cand-top-q');
     if (topQEl && qDist && qDist.length > 0) {
-      topQEl.innerText = `Top Q: +${Number(qDist[0].q_score).toFixed(2)}`;
+      const topVal = qDist[0].deep_score !== undefined ? qDist[0].deep_score : qDist[0].q_score;
+      topQEl.innerText = `Top Score: +${Number(topVal).toFixed(2)}`;
     }
 
     // 4. Action (Recommend Song)
@@ -265,31 +266,40 @@ class RLVisualizer {
       if (actionArtistEl) actionArtistEl.innerText = userState.current_track.artist_name || 'Artist';
     }
 
-    // 5. Last Feedback & Reward
+    // 5. Last Feedback & Engagement Utility
     const rewardBadge = document.getElementById('node-last-reward-badge');
     if (rewardBadge && lastFeedback) {
       const sign = lastFeedback.reward >= 0 ? '+' : '';
-      rewardBadge.innerHTML = `Latest: <strong>${sign}${Number(lastFeedback.reward).toFixed(2)} R</strong> (${lastFeedback.action_type})`;
+      rewardBadge.innerHTML = `Latest: <strong>${sign}${Number(lastFeedback.reward).toFixed(2)} DL Score</strong> (${lastFeedback.action_type})`;
     }
 
-    // 6. Policy Update Status
+    // 6. Neural Network Update Status
     const bufferSizeEl = document.getElementById('loop-buffer-size');
     const lastUpdateEl = document.getElementById('loop-last-update');
     const lossDisplayEl = document.getElementById('node-loss-display');
 
     if (policyMetrics) {
       if (bufferSizeEl && policyMetrics.buffer_size !== undefined) {
-        bufferSizeEl.innerText = `${policyMetrics.buffer_size} transitions`;
+        bufferSizeEl.innerText = `${policyMetrics.buffer_size} items`;
       }
       if (lastUpdateEl) {
         lastUpdateEl.innerText = policyMetrics.policy_updated ? 'Step Optimized' : 'Buffering';
         lastUpdateEl.style.color = policyMetrics.policy_updated ? 'var(--accent-green-bright)' : 'var(--text-secondary)';
       }
-      if (lossDisplayEl && policyMetrics.loss_info && policyMetrics.loss_info.critic_loss !== undefined) {
-        lossDisplayEl.innerText = `Critic Loss: ${Number(policyMetrics.loss_info.critic_loss).toFixed(4)}`;
+      if (lossDisplayEl && policyMetrics.loss_info) {
+        const loss = policyMetrics.loss_info.loss ?? policyMetrics.loss_info.critic_loss;
+        if (loss !== undefined) {
+          lossDisplayEl.innerText = `MT-BCE Loss: ${Number(loss).toFixed(4)}`;
+        }
       }
     }
   }
+
+  // Backwards compatibility alias
+  updateRLStateLoop(userState, qDist, lastFeedback, policyMetrics) {
+    return this.updateDLStateLoop(userState, qDist, lastFeedback, policyMetrics);
+  }
 }
 
-window.rlVisualizer = new RLVisualizer();
+window.dlVisualizer = new DLVisualizer();
+window.rlVisualizer = window.dlVisualizer;

@@ -160,6 +160,15 @@ def build_candidate_features(
     # ── Skip penalty ──────────────────────────────────────────────────────────
     f_skip_penalty = 0.80 if song_id in skipped_song_ids else 0.0
 
+    # ── Telugu Priority Boost ────────────────────────────────────────────────
+    is_telugu = (
+        genre.lower() in ("telugu", "tollywood")
+        or str(song_meta.get("language", "")).lower() == "telugu"
+        or any(k in f"{song_meta.get('title','')} {artist} {song_meta.get('album','')}".lower() 
+               for k in ["telugu", "tollywood", "thaman", "dsp", "devi sri prasad", "anirudh", "keeravani", "sid sriram", "ram miriyala", "naatu naatu", "samajavaragamana", "butta bomma", "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"])
+    )
+    f_telugu_priority = 2.5 if is_telugu else 0.0
+
     return {
         "content_sim":        f_content,
         "genre_affinity":     f_genre_affinity,
@@ -172,6 +181,7 @@ def build_candidate_features(
         "replay_bonus":       f_replay_bonus,
         "liked_bonus":        f_liked_bonus,
         "skip_penalty":       f_skip_penalty,
+        "telugu_priority":    f_telugu_priority,
     }
 
 
@@ -190,6 +200,7 @@ WEIGHTS = {
     "replay_bonus":      0.35,    # Strong affinity for replayed tracks
     "liked_bonus":       0.40,    # High priority for liked-similar tracks
     "skip_penalty":      -0.80,   # Strong deduction for skipped tracks
+    "telugu_priority":   1.20,    # High priority for Telugu tracks
 }
 
 
@@ -209,6 +220,8 @@ def get_recommendation_reason(features: Dict[str, float], context_type: str, son
     """
     ctx_label = get_context_profile(context_type).get("label", "")
 
+    if features.get("telugu_priority", 0) > 0:
+        return {"icon": "fa-fire", "label": "Telugu Top Priority Hit", "category": "telugu_hit", "color": "#ff4757"}
     if features.get("liked_bonus", 0) > 0:
         return {"icon": "fa-heart", "label": "Based on your likes", "category": "because_you_liked", "color": "#ff6b6b"}
     if features.get("replay_bonus", 0) > 0:
@@ -225,7 +238,7 @@ def get_recommendation_reason(features: Dict[str, float], context_type: str, son
         return {"icon": "fa-dna", "label": "Acoustic twin", "category": "because_you_liked", "color": "#26de81"}
     if song_meta.get("audio_url"):
         return {"icon": "fa-fire", "label": "Trending OpenSpot", "category": "trending_openspot", "color": "#fd9644"}
-    return {"icon": "fa-brain", "label": "RL Pick", "category": "rl_pick", "color": "#778ca3"}
+    return {"icon": "fa-brain", "label": "DL Pick", "category": "dl_pick", "color": "#778ca3"}
 
 
 # ─── Main Ranker Class ────────────────────────────────────────────────────────

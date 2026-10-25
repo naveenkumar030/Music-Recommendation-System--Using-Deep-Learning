@@ -1,5 +1,5 @@
 """
-SoundSpace RL - LambdaTest Cross-Browser Automation Test Suite
+SoundSpace DL - LambdaTest Cross-Browser Automation Test Suite
 Executes automated cloud tests across multiple OS and Browser configurations on LambdaTest.
 """
 
@@ -20,7 +20,7 @@ if hasattr(sys.stdout, "reconfigure"):
 LT_USERNAME = "2411cs020069"
 LT_ACCESS_KEY = "LT_9WPAT5KKdos7GpsTpC351d7gMx5ouscFbv3TNs1DlaonWpr"
 HUB_URL = f"https://{LT_USERNAME}:{LT_ACCESS_KEY}@hub.lambdatest.com/wd/hub"
-BUILD_NAME = f"SoundSpace RL - Cross-Browser Suite {time.strftime('%Y-%m-%d %H:%M')}"
+BUILD_NAME = f"SoundSpace DL - Cross-Browser Suite {time.strftime('%Y-%m-%d %H:%M')}"
 
 # Browser matrix
 TEST_CONFIGS = [
@@ -110,17 +110,17 @@ def run_single_browser_test(config):
         print("[*] Step 3: Verifying dynamic DOM manipulation and event handlers...")
         driver.execute_script("""
             var testDiv = document.createElement('div');
-            testDiv.id = 'soundspace-rl-test-container';
+            testDiv.id = 'soundspace-dl-test-container';
             testDiv.innerHTML = '<div style=\"background: #111; color: #1DB954; padding: 20px; font-size: 20px; font-family: sans-serif;\">' +
-                                '<h3>SoundSpace RL Recommendation Studio</h3>' +
-                                '<p>Policy: Wolpertinger RL | Candidate Generator: Two-Tower ANN</p>' +
+                                '<h3>SoundSpace DL Recommendation Studio</h3>' +
+                                '<p>Ranker: Deep Neural Ranker | Candidate Generator: Two-Tower ANN</p>' +
                                 '<button id=\"test-recommend-btn\" style=\"background:#1DB954;color:#000;padding:10px 20px;border-radius:20px;font-weight:bold;cursor:pointer;\">Generate Recommendations</button>' +
                                 '<div id=\"test-output\" style=\"margin-top:10px;\"></div>' +
                                 '</div>';
             document.body.prepend(testDiv);
             
             document.getElementById('test-recommend-btn').addEventListener('click', function() {
-                document.getElementById('test-output').innerText = 'Recommendation Slate: [Track_101, Track_205, Track_308] | Top Q-Score: 0.942 | Latency: 0.82ms';
+                document.getElementById('test-output').innerText = 'Recommendation Slate: [Track_101, Track_205, Track_308] | Deep Score: 0.942 | Latency: 0.82ms';
             });
         """)
         time.sleep(1)
@@ -169,7 +169,7 @@ def get_session_details(session_id):
 
 def main():
     print("================================================================")
-    print("      SOUNDSPACE RL - LAMBDATEST CLOUD TEST EXECUTION           ")
+    print("      SOUNDSPACE DL - LAMBDATEST CLOUD TEST EXECUTION           ")
     print(f"      User: {LT_USERNAME} | Grid: hub.lambdatest.com            ")
     print("================================================================")
 

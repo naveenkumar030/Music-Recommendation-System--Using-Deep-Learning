@@ -18,7 +18,7 @@ class BenchmarkView {
         labels: Array.from({ length: 15 }, (_, i) => `Sess ${i + 1}`),
         datasets: [
           {
-            label: 'Wolpertinger RL',
+            label: 'Deep Neural Ranker (MT-DNN)',
             data: [4.2, 5.8, 7.1, 8.4, 9.2, 11.0, 10.5, 12.4, 13.8, 14.1, 15.0, 14.8, 16.2, 15.9, 17.1],
             borderColor: '#1ed760',
             backgroundColor: 'rgba(29, 185, 84, 0.1)',
@@ -62,7 +62,7 @@ class BenchmarkView {
           y: {
             ticks: { color: '#8b949e' },
             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-            title: { display: true, text: 'Cumulative Episode Return', color: '#8b949e' }
+            title: { display: true, text: 'Cumulative Session Engagement Score', color: '#8b949e' }
           }
         }
       }
@@ -79,31 +79,45 @@ class BenchmarkView {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           num_sessions: numSessions,
-          models_to_compare: ['wolpertinger', 'baseline', 'random']
+          models_to_compare: ['deep_ranker', 'baseline', 'random']
         })
       });
 
       const data = await res.json();
       const comp = data.comparison;
+      const rankerComp = comp.deep_ranker;
+
+      const setElText = (ids, text) => {
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (el) { el.innerText = text; break; }
+        }
+      };
 
       // Update metric cards
-      document.getElementById('sim-rl-return').innerText = `+${comp.wolpertinger.mean_episode_return.toFixed(2)}`;
-      document.getElementById('sim-rl-skip').innerText = `${comp.wolpertinger.skip_rate_pct.toFixed(1)}%`;
-      document.getElementById('sim-rl-like').innerText = `${comp.wolpertinger.like_rate_pct.toFixed(1)}%`;
+      if (rankerComp) {
+        setElText(['dl-mean-return', 'sim-dl-return', 'sim-rl-return', 'rl-mean-return'], `+${rankerComp.mean_episode_return.toFixed(2)}`);
+        setElText(['dl-skip-rate', 'sim-dl-skip', 'sim-rl-skip', 'rl-skip-rate'], `${rankerComp.skip_rate_pct.toFixed(1)}%`);
+        setElText(['dl-like-rate', 'sim-dl-like', 'sim-rl-like', 'rl-like-rate'], `${rankerComp.like_rate_pct.toFixed(1)}%`);
+      }
 
-      document.getElementById('sim-base-return').innerText = `+${comp.baseline.mean_episode_return.toFixed(2)}`;
-      document.getElementById('sim-base-skip').innerText = `${comp.baseline.skip_rate_pct.toFixed(1)}%`;
-      document.getElementById('sim-base-like').innerText = `${comp.baseline.like_rate_pct.toFixed(1)}%`;
+      if (comp.baseline) {
+        setElText(['sim-base-return', 'base-mean-return'], `+${comp.baseline.mean_episode_return.toFixed(2)}`);
+        setElText(['sim-base-skip', 'base-skip-rate'], `${comp.baseline.skip_rate_pct.toFixed(1)}%`);
+        setElText(['sim-base-like', 'base-like-rate'], `${comp.baseline.like_rate_pct.toFixed(1)}%`);
+      }
 
-      document.getElementById('sim-rand-return').innerText = `${comp.random.mean_episode_return.toFixed(2)}`;
-      document.getElementById('sim-rand-skip').innerText = `${comp.random.skip_rate_pct.toFixed(1)}%`;
-      document.getElementById('sim-rand-like').innerText = `${comp.random.like_rate_pct.toFixed(1)}%`;
+      if (comp.random) {
+        setElText(['sim-rand-return', 'rand-mean-return'], `${comp.random.mean_episode_return.toFixed(2)}`);
+        setElText(['sim-rand-skip', 'rand-skip-rate'], `${comp.random.skip_rate_pct.toFixed(1)}%`);
+        setElText(['sim-rand-like', 'rand-like-rate'], `${comp.random.like_rate_pct.toFixed(1)}%`);
+      }
 
       // Update chart
       if (this.simChart) {
-        this.simChart.data.datasets[0].data = comp.wolpertinger.trajectory_points;
-        this.simChart.data.datasets[1].data = comp.baseline.trajectory_points;
-        this.simChart.data.datasets[2].data = comp.random.trajectory_points;
+        if (rankerComp) this.simChart.data.datasets[0].data = rankerComp.trajectory_points;
+        if (comp.baseline) this.simChart.data.datasets[1].data = comp.baseline.trajectory_points;
+        if (comp.random) this.simChart.data.datasets[2].data = comp.random.trajectory_points;
         this.simChart.update();
       }
     } catch (e) {

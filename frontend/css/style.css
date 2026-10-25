@@ -226,6 +226,7 @@ body.dark-theme {
   letter-spacing: -0.3px;
 }
 
+.badge-dl,
 .badge-rl {
   background: linear-gradient(135deg, var(--accent-primary), var(--accent-blue));
   color: #fff;
@@ -1694,6 +1695,7 @@ body.dark-theme {
   gap: 6px;
 }
 
+.badge-model.dl,
 .badge-model.rl {
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(56, 189, 248, 0.15));
   color: #a5b4fc;
@@ -2710,6 +2712,7 @@ body.dark-theme {
   margin-top: auto;
 }
 
+.btn-import-dl,
 .btn-import-rl {
   background: linear-gradient(135deg, #6156e2, #473dc4);
   color: #fff;
@@ -2725,11 +2728,13 @@ body.dark-theme {
   transition: all 0.2s;
 }
 
+.btn-import-dl:hover,
 .btn-import-rl:hover {
   transform: scale(1.03);
   box-shadow: 0 4px 12px rgba(97, 86, 226, 0.4);
 }
 
+.btn-import-dl.imported,
 .btn-import-rl.imported {
   background: rgba(30, 215, 96, 0.2);
   color: var(--accent-green-bright);
@@ -3698,6 +3703,7 @@ body.dark-theme {
   font-weight: 800;
 }
 
+.badge-model.dl,
 .badge-model.rl {
   background: rgba(29, 185, 84, 0.15);
   color: var(--accent-green-bright);

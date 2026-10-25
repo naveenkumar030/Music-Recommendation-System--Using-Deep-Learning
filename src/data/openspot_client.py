@@ -6,7 +6,7 @@ Provides:
 - JioSaavn search & metadata retrieval.
 - DES decryption of encrypted_media_url to direct HQ audio streaming URLs (320kbps / 160kbps MP4/AAC).
 - High-resolution 500x500 album artwork extraction.
-- Acoustic feature estimation & normalization for RL feature store compatibility.
+- Acoustic feature estimation & normalization for feature store compatibility.
 """
 
 import base64
@@ -46,7 +46,8 @@ GENRE_DEFAULTS = {
     "Indie / Alternative": {"danceability": 0.60, "energy": 0.66, "valence": 0.51, "tempo": 118.0, "acousticness": 0.42, "instrumentalness": 0.08, "speechiness": 0.04, "loudness": -7.5, "popularity": 65},
     "Metal": {"danceability": 0.36, "energy": 0.96, "valence": 0.32, "tempo": 142.0, "acousticness": 0.03, "instrumentalness": 0.15, "speechiness": 0.08, "loudness": -4.2, "popularity": 62},
     "Acoustic / Folk": {"danceability": 0.50, "energy": 0.39, "valence": 0.48, "tempo": 104.0, "acousticness": 0.86, "instrumentalness": 0.02, "speechiness": 0.04, "loudness": -9.8, "popularity": 58},
-    "Synthwave": {"danceability": 0.67, "energy": 0.80, "valence": 0.56, "tempo": 116.0, "acousticness": 0.10, "instrumentalness": 0.45, "speechiness": 0.04, "loudness": -6.2, "popularity": 64}
+    "Synthwave": {"danceability": 0.67, "energy": 0.80, "valence": 0.56, "tempo": 116.0, "acousticness": 0.10, "instrumentalness": 0.45, "speechiness": 0.04, "loudness": -6.2, "popularity": 64},
+    "Telugu": {"danceability": 0.76, "energy": 0.84, "valence": 0.78, "tempo": 128.0, "acousticness": 0.22, "instrumentalness": 0.005, "speechiness": 0.07, "loudness": -5.1, "popularity": 92}
 }
 
 
@@ -137,7 +138,7 @@ class OpenSpotClient:
             logger.warning(f"OpenSpot API request failed for {endpoint}: {e}")
             return None
 
-    def search_songs(self, query: str, limit: int = 20, p: int = 1) -> List[Dict[str, Any]]:
+    def search_songs(self, query: str, limit: int = 40, p: int = 1) -> List[Dict[str, Any]]:
         """Searches songs with full audio streaming links, covers, and parsed metadata."""
         data = self._fetch_api("search.getResults", {"q": query, "p": p, "n": limit})
         if not data:
@@ -189,9 +190,10 @@ class OpenSpotClient:
             return None
         return self._parse_song_item(data[raw_id])
 
-    def get_top_charts(self, genre: str = "Pop", limit: int = 20) -> List[Dict[str, Any]]:
+    def get_top_charts(self, genre: str = "Pop", limit: int = 40, p: int = 1) -> List[Dict[str, Any]]:
         """Fetches top trending songs for a given genre or category."""
         query_map = {
+            "Telugu": "Top Telugu Hits",
             "Pop": "Top Pop Hits",
             "Hip-Hop": "Top Hip Hop Hits",
             "EDM / Electronic": "EDM Top Hits",
@@ -206,7 +208,7 @@ class OpenSpotClient:
             "Synthwave": "Synthwave Retrowave Hits"
         }
         q = query_map.get(genre, f"Top {genre} Songs")
-        return self.search_songs(q, limit=limit)
+        return self.search_songs(q, limit=limit, p=p)
 
     def get_recommendations_for_profile(
         self,
@@ -384,6 +386,16 @@ class OpenSpotClient:
     def _infer_genre(self, title: str, artists: str, album: str, language: str) -> str:
         """Infers musical genre from artist and title keywords."""
         combined = f"{title} {artists} {album}".lower()
+        lang = str(language).lower()
+        if "telugu" in lang or any(k in combined for k in [
+            "telugu", "tollywood", "thaman", "devi sri prasad", "dsp", "keeravani", 
+            "sid sriram", "ram miriyala", "anirudh", "hesham abdul", "anurag kulkarni",
+            "mangli", "arman malik", "naatu naatu", "samajavaragamana", "butta bomma", 
+            "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", 
+            "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", 
+            "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"
+        ]):
+            return "Telugu"
         if any(k in combined for k in ["lo-fi", "lofi", "chillhop", "study", "nujabes", "idealism", "saib"]):
             return "Lo-Fi / Chillhop"
         if any(k in combined for k in ["calvin harris", "avicii", "daft punk", "marshmello", "garrix", "kygo", "tiesto", "david guetta", "remix", "club", "edm", "electro"]):
@@ -418,7 +430,7 @@ class OpenSpotClient:
     ) -> Dict[str, float]:
         """
         Generates continuous acoustic feature values calibrated for the song
-        to integrate smoothly with Two-Tower & Wolpertinger RL models.
+        to integrate smoothly with Two-Tower & Deep Neural Ranker models.
         """
         base = GENRE_DEFAULTS.get(genre, GENRE_DEFAULTS["Pop"])
         seed = abs(hash(f"{title}_{artist}")) % (2**31 - 1)
