@@ -322,7 +322,7 @@
           <div class="player-card glass-panel">
             <div class="vinyl-container">
               <div class="vinyl-disc rotating" id="vinyl-disc">
-                <img id="player-album-art" class="vinyl-cover-art" src="https://c.saavncdn.com/181/Ala-Vaikunthapurramuloo-Telugu-2019-20200113151108-500x500.jpg" alt="Album Cover">
+                <img id="player-album-art" class="vinyl-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80" alt="Album Cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80';">
                 <div class="vinyl-center-hole"></div>
               </div>
               <!-- Procedural Equalizer Canvas -->
@@ -599,18 +599,11 @@
 
             <!-- Quick Genre Filter Pills -->
             <div class="openspot-genre-pills">
-              <span class="pill-label">Top Genre Charts:</span>
-              <button class="genre-pill active" data-genre="Telugu">🔥 Telugu Hits</button>
-              <button class="genre-pill" data-genre="Pop">Pop</button>
-              <button class="genre-pill" data-genre="Hip-Hop">Hip-Hop</button>
-              <button class="genre-pill" data-genre="EDM / Electronic">EDM</button>
-              <button class="genre-pill" data-genre="Rock">Rock</button>
-              <button class="genre-pill" data-genre="R&B / Soul">R&B</button>
-              <button class="genre-pill" data-genre="Lo-Fi / Chillhop">Lo-Fi</button>
-              <button class="genre-pill" data-genre="Jazz">Jazz</button>
-              <button class="genre-pill" data-genre="Classical">Classical</button>
-              <button class="genre-pill" data-genre="Indie / Alternative">Indie</button>
-              <button class="genre-pill" data-genre="Synthwave">Synthwave</button>
+              <span class="pill-label">Curated Charts:</span>
+              <button class="genre-pill active" data-genre="All">🌟 All Tracks</button>
+              <button class="genre-pill" data-genre="Telugu">🔥 Telugu Blockbusters</button>
+              <button class="genre-pill" data-genre="Hindi">✨ Hindi Bollywood Hits</button>
+              <button class="genre-pill" data-genre="English">🎸 English Billboard Hits</button>
             </div>
           </div>
         </div>
@@ -869,21 +862,11 @@
             </div>
             <div class="filter-controls">
               <input type="text" id="catalog-search" class="input-text" placeholder="Search title or artist...">
-              <select id="catalog-genre-filter" class="select-dropdown" style="width:180px;">
-                <option value="Telugu" selected>🔥 Telugu / Tollywood (Default)</option>
-                <option value="All">All Genres</option>
-                <option value="Pop">Pop</option>
-                <option value="Hip-Hop">Hip-Hop</option>
-                <option value="EDM / Electronic">EDM / Electronic</option>
-                <option value="Rock">Rock</option>
-                <option value="R&B / Soul">R&B / Soul</option>
-                <option value="Lo-Fi / Chillhop">Lo-Fi / Chillhop</option>
-                <option value="Jazz">Jazz</option>
-                <option value="Classical">Classical</option>
-                <option value="Indie / Alternative">Indie / Alternative</option>
-                <option value="Metal">Metal</option>
-                <option value="Acoustic / Folk">Acoustic / Folk</option>
-                <option value="Synthwave">Synthwave</option>
+              <select id="catalog-genre-filter" class="select-dropdown" style="width:200px;">
+                <option value="All" selected>🌟 All 3,000 Songs (Telugu, Hindi, English)</option>
+                <option value="Telugu">🔥 Telugu Blockbusters (Tollywood)</option>
+                <option value="Hindi">✨ Hindi Hits (Bollywood)</option>
+                <option value="English">🎸 English Global Hits (Billboard)</option>
               </select>
           </div>
         </div>
@@ -929,14 +912,10 @@
 
         <!-- Genre Filter Pills -->
         <div class="genre-filter-pills" id="catalog-genre-pills">
-          <button class="pill-btn active" data-genre="Pop">Pop</button>
-          <button class="pill-btn" data-genre="Hip-Hop">Hip-Hop</button>
-          <button class="pill-btn" data-genre="EDM">EDM / Dance</button>
-          <button class="pill-btn" data-genre="Lo-Fi">Lo-Fi / Chillhop</button>
-          <button class="pill-btn" data-genre="Rock">Rock</button>
-          <button class="pill-btn" data-genre="Jazz">Jazz</button>
-          <button class="pill-btn" data-genre="R&B">R&B</button>
-          <button class="pill-btn" data-genre="Classical">Classical</button>
+          <button class="pill-btn active" data-genre="All">🌟 All 3,000 Songs</button>
+          <button class="pill-btn" data-genre="Telugu">🔥 Telugu Blockbusters</button>
+          <button class="pill-btn" data-genre="Hindi">✨ Hindi Bollywood</button>
+          <button class="pill-btn" data-genre="English">🎸 English Global</button>
         </div>
             </div>
           </div>
@@ -1057,7 +1036,7 @@
   <footer class="spotify-player-bar" id="spotify-player-bar">
     <!-- Left: Now Playing Metadata & Actions -->
     <div class="sp-player-left">
-      <img id="sp-player-cover" class="sp-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Album Cover">
+      <img id="sp-player-cover" class="sp-cover-art" src="https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80" alt="Album Cover" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=100&auto=format&fit=crop&q=80';">
       <div class="sp-track-meta">
         <span class="sp-title" id="sp-player-title" onclick="window.app.switchTab('player-tab')">No track playing</span>
         <span class="sp-artist" id="sp-player-artist">—</span>

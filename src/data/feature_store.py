@@ -71,12 +71,16 @@ class FeatureStore:
             float(np.clip((loudness - loud_min) / (loud_max - loud_min), 0.0, 1.0)),
             float(np.clip(pop / 100.0, 0.0, 1.0))
         ]
-        genre = row.get("genre", "Pop")
+        genre = row.get("genre", "Telugu")
         genre_vec = [0.0] * len(self.genre_to_idx)
         if genre in self.genre_to_idx:
             genre_vec[self.genre_to_idx[genre]] = 1.0
         elif genre == "Telugu":
             genre_vec[self.genre_to_idx.get("Pop", 0)] = 1.0
+        elif genre == "Hindi":
+            genre_vec[self.genre_to_idx.get("R&B / Soul", 1)] = 1.0
+        elif genre == "English":
+            genre_vec[self.genre_to_idx.get("Rock", 2)] = 1.0
         elif "Pop" in self.genre_to_idx:
             genre_vec[self.genre_to_idx["Pop"]] = 1.0
 

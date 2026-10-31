@@ -5410,5 +5410,31 @@ body.dark-theme {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* ── Live Fetched Demo Hero Showcase ── */
+.openspot-hero-demo-card {
+  animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  position: relative;
+  overflow: hidden;
+}
+
+.openspot-hero-demo-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-green), transparent);
+}
+
+.btn-hero-play:hover {
+  transform: scale(1.1);
+  box-shadow: 0 8px 24px rgba(29, 185, 84, 0.8) !important;
+}
+
+.btn-hero-play:active {
+  transform: scale(0.95);
+}
+
 
 

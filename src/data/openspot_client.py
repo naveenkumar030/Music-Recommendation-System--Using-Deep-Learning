@@ -107,19 +107,24 @@ def clean_text(text: Optional[str]) -> str:
     return html.unescape(text).strip()
 
 
+import requests
+
 class OpenSpotClient:
     """Client for OpenSpot / JioSaavn music catalog and direct audio streaming."""
 
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: float = 3.5):
         self.timeout = timeout
-        self.headers = {
+        self.session = requests.Session()
+        self.session.headers.update({
             "User-Agent": USER_AGENTS[0],
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9",
-        }
+            "Origin": "https://www.jiosaavn.com",
+            "Referer": "https://www.jiosaavn.com/"
+        })
 
-    def _fetch_api(self, endpoint: str, params: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Makes an HTTP GET request to JioSaavn API."""
+    def _fetch_api(self, endpoint: str, params: Dict[str, Any], timeout: Optional[float] = None) -> Optional[Dict[str, Any]]:
+        """Makes an HTTP GET request to JioSaavn API using persistent connection pool."""
         query_params = {
             "__call": endpoint,
             "_format": "json",
@@ -128,28 +133,102 @@ class OpenSpotClient:
             "ctx": "web6dot0",
             **params
         }
-        url = f"{JIO_SAAVN_BASE_URL}?{urllib.parse.urlencode(query_params)}"
-        req = urllib.request.Request(url, headers=self.headers)
+        to = timeout or self.timeout
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                content = response.read().decode("utf-8", errors="ignore")
-                return json.loads(content)
+            resp = self.session.get(JIO_SAAVN_BASE_URL, params=query_params, timeout=to)
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"OpenSpot API {endpoint} returned status {resp.status_code}")
+            return None
         except Exception as e:
             logger.warning(f"OpenSpot API request failed for {endpoint}: {e}")
             return None
 
     def search_songs(self, query: str, limit: int = 40, p: int = 1) -> List[Dict[str, Any]]:
-        """Searches songs with full audio streaming links, covers, and parsed metadata."""
-        data = self._fetch_api("search.getResults", {"q": query, "p": p, "n": limit})
-        if not data:
+        """Searches songs with full audio streaming links, covers, and parsed metadata with fast multi-tier fallback."""
+        if not query or not query.strip():
             return []
-
-        results = data.get("results", [])
+        q_clean = query.strip()
         parsed_tracks = []
-        for r in results:
-            parsed = self._parse_song_item(r)
-            if parsed:
-                parsed_tracks.append(parsed)
+
+        # Tier 1: search.getResults (fast primary search)
+        try:
+            data = self._fetch_api("search.getResults", {"q": q_clean, "p": p, "n": limit}, timeout=1.8)
+            if data and isinstance(data, dict):
+                for r in data.get("results", []):
+                    parsed = self._parse_song_item(r)
+                    if parsed:
+                        parsed_tracks.append(parsed)
+        except Exception as e:
+            logger.debug(f"Tier 1 search error: {e}")
+
+        # Tier 2: autocomplete.get + song.getDetails (ultra-fast ~0.2s fallback for specific song queries)
+        if not parsed_tracks:
+            try:
+                auto_data = self._fetch_api("autocomplete.get", {"query": q_clean}, timeout=1.5)
+                if auto_data and isinstance(auto_data, dict):
+                    songs_raw = auto_data.get("songs", {}).get("data", [])
+                    pids = [str(s.get("id")) for s in songs_raw if s.get("id")]
+                    if pids:
+                        details = self._fetch_api("song.getDetails", {"pids": ",".join(pids[:10])}, timeout=1.8)
+                        s_list = []
+                        if isinstance(details, dict):
+                            if "songs" in details and isinstance(details["songs"], list):
+                                s_list = details["songs"]
+                            else:
+                                s_list = [v for k, v in details.items() if isinstance(v, dict) and ("id" in v or "song" in v or "title" in v)]
+                        for s_item in s_list:
+                            if not s_item.get("title") and s_item.get("song"):
+                                s_item["title"] = s_item["song"]
+                            parsed = self._parse_song_item(s_item)
+                            if parsed:
+                                parsed_tracks.append(parsed)
+
+                    # Tier 3: Direct fallback from autocomplete items if song.getDetails returned nothing
+                    if not parsed_tracks and songs_raw:
+                        for s in songs_raw:
+                            more = s.get("more_info", {})
+                            enc_url = more.get("encrypted_media_url", "")
+                            stream_url = decrypt_media_url(enc_url, "320kbps") if enc_url else None
+                            if not stream_url and more.get("vlink"):
+                                stream_url = more.get("vlink")
+                            parsed_tracks.append({
+                                "song_id": f"os_{s.get('id', '')}",
+                                "raw_id": s.get("id", ""),
+                                "title": clean_text(s.get("title")),
+                                "artist_name": clean_text(more.get("singers") or more.get("primary_artists") or s.get("description", "")),
+                                "album": clean_text(more.get("album", "")),
+                                "genre": self._infer_genre(s.get("title", ""), more.get("primary_artists", ""), more.get("album", ""), more.get("language", "")),
+                                "danceability": 0.70,
+                                "energy": 0.75,
+                                "valence": 0.65,
+                                "tempo": 120.0,
+                                "acousticness": 0.20,
+                                "instrumentalness": 0.005,
+                                "speechiness": 0.05,
+                                "loudness": -5.5,
+                                "popularity": 85,
+                                "duration_ms": 210000,
+                                "duration_formatted": "3:30",
+                                "image_url": format_image_url(s.get("image", ""), "500x500"),
+                                "audio_url": stream_url or "",
+                                "spotify_url": ""
+                            })
+            except Exception as e:
+                logger.debug(f"Tier 2/3 autocomplete search error: {e}")
+
+        # Tier 4: search.getSongResults (alternate endpoint)
+        if not parsed_tracks:
+            try:
+                data = self._fetch_api("search.getSongResults", {"q": q_clean, "p": p, "n": limit}, timeout=2.5)
+                if data and isinstance(data, dict):
+                    for r in data.get("results", []):
+                        parsed = self._parse_song_item(r)
+                        if parsed:
+                            parsed_tracks.append(parsed)
+            except Exception as e:
+                logger.debug(f"Tier 4 search error: {e}")
+
         return parsed_tracks
 
     def search_autocomplete(self, query: str) -> Dict[str, Any]:
@@ -185,10 +264,17 @@ class OpenSpotClient:
     def get_song_details(self, song_id: str) -> Optional[Dict[str, Any]]:
         """Gets detailed metadata for a single song."""
         raw_id = song_id.replace("os_", "").replace("trk_", "")
-        data = self._fetch_api("song.getDetails", {"pids": raw_id})
-        if not data or raw_id not in data:
+        data = self._fetch_api("song.getDetails", {"pids": raw_id}, timeout=3.0)
+        if not data or not isinstance(data, dict):
             return None
-        return self._parse_song_item(data[raw_id])
+        if raw_id in data and isinstance(data[raw_id], dict):
+            return self._parse_song_item(data[raw_id])
+        if "songs" in data and isinstance(data["songs"], list) and len(data["songs"]) > 0:
+            return self._parse_song_item(data["songs"][0])
+        for k, v in data.items():
+            if isinstance(v, dict) and ("id" in v or "song" in v or "title" in v):
+                return self._parse_song_item(v)
+        return None
 
     def get_top_charts(self, genre: str = "Pop", limit: int = 40, p: int = 1) -> List[Dict[str, Any]]:
         """Fetches top trending songs for a given genre or category."""
@@ -327,6 +413,9 @@ class OpenSpotClient:
         enc_url = more_info.get("encrypted_media_url", "")
         audio_320 = decrypt_media_url(enc_url, "320kbps")
         audio_160 = decrypt_media_url(enc_url, "160kbps")
+        if not audio_320 and more_info.get("vlink"):
+            audio_320 = more_info.get("vlink")
+            audio_160 = audio_320
 
         raw_id = str(item.get("id", ""))
         title = clean_text(item.get("title") or item.get("song"))

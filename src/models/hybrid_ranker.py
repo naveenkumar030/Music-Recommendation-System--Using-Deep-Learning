@@ -160,14 +160,13 @@ def build_candidate_features(
     # ── Skip penalty ──────────────────────────────────────────────────────────
     f_skip_penalty = 0.80 if song_id in skipped_song_ids else 0.0
 
-    # ── Telugu Priority Boost ────────────────────────────────────────────────
-    is_telugu = (
-        genre.lower() in ("telugu", "tollywood")
-        or str(song_meta.get("language", "")).lower() == "telugu"
-        or any(k in f"{song_meta.get('title','')} {artist} {song_meta.get('album','')}".lower() 
-               for k in ["telugu", "tollywood", "thaman", "dsp", "devi sri prasad", "anirudh", "keeravani", "sid sriram", "ram miriyala", "naatu naatu", "samajavaragamana", "butta bomma", "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"])
+    # ── Regional Priority Boost (Telugu & Hindi) ────────────────────────────
+    is_regional = (
+        genre.lower() in ("telugu", "tollywood", "hindi", "bollywood")
+        or str(song_meta.get("language", "")).lower() in ("telugu", "hindi")
+        or song_meta.get("language") in (99, 88)
     )
-    f_telugu_priority = 2.5 if is_telugu else 0.0
+    f_telugu_priority = 2.5 if is_regional else 0.0
 
     return {
         "content_sim":        f_content,

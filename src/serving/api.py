@@ -138,18 +138,21 @@ def _is_telugu_track(meta: Optional[Dict[str, Any]]) -> bool:
         return False
     genre = str(meta.get("genre", "")).lower()
     lang = str(meta.get("language", "")).lower()
-    if "telugu" in genre or "tollywood" in genre or "telugu" in lang:
-        return True
-    combined = f"{meta.get('title', '')} {meta.get('artist_name', '')} {meta.get('album', '')}".lower()
-    telugu_keywords = [
-        "telugu", "tollywood", "thaman", "devi sri prasad", "dsp", "keeravani", 
-        "sid sriram", "ram miriyala", "anirudh", "hesham abdul", "anurag kulkarni",
-        "mangli", "armaan malik", "naatu naatu", "samajavaragamana", "butta bomma", 
-        "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", 
-        "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", 
-        "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"
-    ]
-    return any(k in combined for k in telugu_keywords)
+    return "telugu" in genre or "tollywood" in genre or "telugu" in lang or meta.get("language") == 99
+
+
+def _is_hindi_track(meta: Optional[Dict[str, Any]]) -> bool:
+    """Helper to detect Hindi tracks for prioritized serving."""
+    if not meta:
+        return False
+    genre = str(meta.get("genre", "")).lower()
+    lang = str(meta.get("language", "")).lower()
+    return "hindi" in genre or "bollywood" in genre or "hindi" in lang or meta.get("language") == 88
+
+
+def _is_desi_track(meta: Optional[Dict[str, Any]]) -> bool:
+    """Helper to detect Telugu and Hindi tracks."""
+    return _is_telugu_track(meta) or _is_hindi_track(meta)
 
 
 class RecommendRequest(BaseModel):
@@ -374,29 +377,58 @@ def get_songs(
     fs: FeatureStore = STATE["feature_store"]
     df = fs.songs_df.copy()
     if genre and genre != "All":
-        df = df[df["genre"] == genre]
+        df = df[df["genre"].str.lower() == genre.lower()]
     else:
-        # Prioritize Telugu songs to the very top in browse mode
-        is_telugu = (df["genre"] == "Telugu") | (df.get("language") == 99)
-        df["_telugu_prio"] = is_telugu.astype(int)
-        df = df.sort_values(by=["_telugu_prio"], ascending=False).drop(columns=["_telugu_prio"])
+        # Prioritize Telugu and Hindi tracks in browse mode
+        is_target = df["genre"].isin(["Telugu", "Hindi"]) | (df.get("language").isin([99, 88]))
+        df["_prio"] = is_target.astype(int)
+        df = df.sort_values(by=["_prio"], ascending=False).drop(columns=["_prio"])
     if search:
-        s_lower = search.lower()
+        s_lower = search.strip().lower()
+        full_df = fs.songs_df.copy()
+        
+        # 1. Search in current genre filter first
         mask = (
             df["title"].str.lower().str.contains(s_lower, na=False) |
             df["artist_name"].str.lower().str.contains(s_lower, na=False) |
             df["song_id"].str.lower().str.contains(s_lower, na=False)
         )
-        df = df[mask]
-        # For search-to-select, return all matches (capped at 500) — no pagination offset
-        total = len(df)
-        records = df.head(500).replace({np.nan: None}).to_dict(orient="records")
-        return {"songs": records, "total": total, "offset": 0, "limit": 500}
+        matched_df = df[mask]
+        
+        # 2. If genre filter yielded 0 matches, search the entire 3,000 song catalog across all genres
+        if len(matched_df) == 0 and genre and genre != "All":
+            full_mask = (
+                full_df["title"].str.lower().str.contains(s_lower, na=False) |
+                full_df["artist_name"].str.lower().str.contains(s_lower, na=False) |
+                full_df["song_id"].str.lower().str.contains(s_lower, na=False)
+            )
+            matched_df = full_df[full_mask]
+
+        records = matched_df.head(500).replace({np.nan: None}).to_dict(orient="records")
+
+        # 3. If still 0 matches locally, automatically fetch live from OpenSpot online
+        if len(records) == 0:
+            try:
+                online_tracks = openspot_client.search_songs(search.strip(), limit=25)
+                for ot in online_tracks:
+                    ot["is_online_fetch"] = True
+                return {
+                    "songs": online_tracks,
+                    "total": len(online_tracks),
+                    "offset": 0,
+                    "limit": 500,
+                    "fetched_online": True,
+                    "query": search
+                }
+            except Exception as e:
+                logger.warning(f"Live search fetch error: {e}")
+
+        return {"songs": records, "total": len(records), "offset": 0, "limit": 500, "fetched_online": False}
     # Browse mode — paginate with offset
     total = len(df)
     page_df = df.iloc[offset: offset + limit]
     records = page_df.replace({np.nan: None}).to_dict(orient="records")
-    return {"songs": records, "total": total, "offset": offset, "limit": limit}
+    return {"songs": records, "total": total, "offset": offset, "limit": limit, "fetched_online": False}
 
 
 @app.get("/api/openspot/search")
@@ -571,6 +603,19 @@ def resolve_song_stream(song_id: str):
         raise HTTPException(status_code=503, detail="Feature store not initialized.")
 
     if song_id not in fs.song_id_to_idx:
+        if song_id.startswith("os_"):
+            raw_id = song_id.replace("os_", "")
+            details = openspot_client.get_song_details(raw_id)
+            if details and details.get("audio_url"):
+                return {
+                    "song_id": song_id,
+                    "title": details.get("title", ""),
+                    "artist_name": details.get("artist_name", ""),
+                    "album": details.get("album", ""),
+                    "audio_url": details.get("audio_url"),
+                    "image_url": details.get("image_url"),
+                    "resolved": True
+                }
         raise HTTPException(status_code=404, detail="Song not found.")
 
     meta = fs.get_song_metadata(song_id)
@@ -605,29 +650,55 @@ def resolve_song_stream(song_id: str):
 
 
 @app.get("/api/stream/proxy")
-def proxy_audio_stream(url: str):
-    """Proxies audio stream with full CORS and audio/mp4 headers to bypass any browser restrictions."""
+def proxy_audio_stream(url: str, request: Request):
+    """Proxies audio stream with Range forwarding, CORS, and audio/mp4 streaming for instant demo playback."""
     if not url or not url.startswith("http"):
         raise HTTPException(status_code=400, detail="Invalid audio stream URL.")
 
-    def iter_stream():
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            while True:
-                chunk = resp.read(64 * 1024)
-                if not chunk:
-                    break
-                yield chunk
+    import requests
 
-    return StreamingResponse(
-        iter_stream(),
-        media_type="audio/mp4",
-        headers={
+    req_headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Referer": "https://www.jiosaavn.com/",
+        "Origin": "https://www.jiosaavn.com"
+    }
+    client_range = request.headers.get("range")
+    if client_range:
+        req_headers["Range"] = client_range
+
+    try:
+        upstream = requests.get(url, headers=req_headers, stream=True, timeout=8)
+        resp_headers = {
             "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
             "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=3600"
+            "Cache-Control": "public, max-age=3600",
         }
-    )
+        for h in ["Content-Range", "Content-Length", "Content-Type"]:
+            val = upstream.headers.get(h)
+            if val:
+                resp_headers[h] = val
+
+        status_code = upstream.status_code if upstream.status_code in [200, 206] else 200
+
+        def iter_chunks():
+            try:
+                for chunk in upstream.iter_content(chunk_size=64 * 1024):
+                    if chunk:
+                        yield chunk
+            except Exception as e:
+                logger.debug(f"Stream proxy chunk error: {e}")
+
+        return StreamingResponse(
+            iter_chunks(),
+            status_code=status_code,
+            media_type=upstream.headers.get("Content-Type", "audio/mp4"),
+            headers=resp_headers
+        )
+    except Exception as e:
+        logger.warning(f"Audio proxy failed for {url}: {e}")
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url)
 
 
 @app.get("/api/lyrics")
@@ -954,9 +1025,8 @@ def recommend_track(req: RecommendRequest):
     u_emb = _get_user_embedding(fs, retrieval_model, req.user_id)
     top_cand_ids, cand_scores, ann_latency = v_index.query(u_emb, top_k=100)
 
-    # Prioritize Telugu songs exclusively in the candidate pool
-    telugu_cand_ids = [sid for sid in fs.song_id_to_idx if _is_telugu_track(fs.get_song_metadata(sid))]
-    merged_cand_ids = list(dict.fromkeys(telugu_cand_ids + list(top_cand_ids)))[:100]
+    # Candidate selection from Two-Tower ANN Vector Index across Telugu, Hindi & English
+    merged_cand_ids = list(top_cand_ids)[:100]
     cand_indices = [fs.song_id_to_idx[sid] for sid in merged_cand_ids if sid in fs.song_id_to_idx]
 
     # Build current session state vector

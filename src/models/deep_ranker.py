@@ -184,24 +184,17 @@ class ReplayBufferShim:
         return len(self.buffer)
 
 
-def is_telugu_song_meta(meta: Optional[Dict[str, Any]]) -> bool:
-    """Detects if a song metadata belongs to Telugu/Tollywood music."""
+def is_target_song_meta(meta: Optional[Dict[str, Any]]) -> bool:
+    """Detects if a song metadata belongs to Telugu or Hindi music."""
     if not meta:
         return False
     genre = str(meta.get("genre", "")).lower()
     lang = str(meta.get("language", "")).lower()
-    if "telugu" in genre or "tollywood" in genre or "telugu" in lang:
-        return True
-    combined = f"{meta.get('title', '')} {meta.get('artist_name', '')} {meta.get('album', '')}".lower()
-    telugu_keywords = [
-        "telugu", "tollywood", "thaman", "devi sri prasad", "dsp", "keeravani", 
-        "sid sriram", "ram miriyala", "anirudh", "hesham abdul", "anurag kulkarni",
-        "mangli", "armaan malik", "naatu naatu", "samajavaragamana", "butta bomma", 
-        "oo antava", "srivalli", "kurchi madathapetti", "ramuloo", "fear song", 
-        "chuttamalle", "daavudi", "tillu", "pushpa", "devara", "guntur kaaram", 
-        "rrr", "kalki", "geetha govindam", "ala vaikunthapurramuloo", "saranga dariya"
-    ]
-    return any(k in combined for k in telugu_keywords)
+    return "telugu" in genre or "hindi" in genre or "tollywood" in genre or "bollywood" in genre or meta.get("language") in (99, 88)
+
+
+def is_telugu_song_meta(meta: Optional[Dict[str, Any]]) -> bool:
+    return is_target_song_meta(meta)
 
 
 class DeepRankerAgent:

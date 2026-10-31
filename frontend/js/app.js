@@ -6,9 +6,19 @@
 
 const DEFAULT_COVER_ART = "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&auto=format&fit=crop&q=80";
 
+// Global fallback handler for all images: prevents any broken image icon from ever rendering
+document.addEventListener('error', function(e) {
+  if (e.target && e.target.tagName && e.target.tagName.toLowerCase() === 'img') {
+    if (!e.target.dataset.fallbackTried) {
+      e.target.dataset.fallbackTried = 'true';
+      e.target.src = DEFAULT_COVER_ART;
+    }
+  }
+}, true);
+
 class App {
   constructor() {
-    this.currentUserId = 'usr_00001'; // Default Telugu Music Lover (Tollywood Hits)
+    this.currentUserId = 'usr_00001'; // Default Telugu & Hindi Music Lover
     this.currentModelType = 'deep_ranker';
     this.currentTrack = null;
     this.sessionStep = 0;
@@ -25,6 +35,8 @@ class App {
     this.currentRelatedFilter = 'all';
     this.searchDebounceTimer = null;
     this.importedTrackIds = new Set();
+    this.selectedOpenSpotIds = new Set();
+    this.openSpotCurrentResults = [];
 
     // Lyrics State
     this.currentLyrics = null;
@@ -39,7 +51,7 @@ class App {
       pref_energy: 0.82,
       pref_valence: 0.85,
       pref_danceability: 0.80,
-      genre_affinities: { "Telugu": 0.95, "Pop": 0.35, "EDM / Electronic": 0.20 }
+      genre_affinities: { "Telugu": 0.95, "Hindi": 0.90 }
     };
 
     // Queue State & Filter Controls
@@ -182,7 +194,7 @@ class App {
             this.switchTab('openspot-tab');
             const openInput = document.getElementById('openspot-search-input');
             if (openInput) openInput.value = q;
-            this.searchOpenSpot(q);
+            this.searchOpenSpot(q, 1, false, true); // auto-play demo stream
           }
         }
       });
@@ -194,8 +206,8 @@ class App {
             this.switchTab('openspot-tab');
             const openInput = document.getElementById('openspot-search-input');
             if (openInput) openInput.value = q;
-            this.searchOpenSpot(q);
-          }, 500);
+            this.searchOpenSpot(q, 1, false, false);
+          }, 450);
         }
       });
     }
@@ -622,7 +634,7 @@ class App {
     if (btnOpenSpotSearch) {
       btnOpenSpotSearch.addEventListener('click', () => {
         const q = openSpotInput ? openSpotInput.value.trim() : '';
-        if (q) this.searchOpenSpot(q);
+        if (q) this.searchOpenSpot(q, 1, false, true); // auto-play demo
       });
     }
 
@@ -630,7 +642,7 @@ class App {
       openSpotInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           const q = openSpotInput.value.trim();
-          if (q) this.searchOpenSpot(q);
+          if (q) this.searchOpenSpot(q, 1, false, true); // auto-play demo
         }
       });
 
@@ -638,7 +650,7 @@ class App {
         clearTimeout(this.searchDebounceTimer);
         const q = e.target.value.trim();
         if (q.length >= 3) {
-          this.searchDebounceTimer = setTimeout(() => this.searchOpenSpot(q), 450);
+          this.searchDebounceTimer = setTimeout(() => this.searchOpenSpot(q, 1, false, false), 450);
         }
       });
     }
@@ -922,6 +934,10 @@ class App {
     // Album cover in turntable vinyl
     const albumArt = document.getElementById('player-album-art');
     if (albumArt) {
+      albumArt.onerror = () => {
+        albumArt.onerror = null;
+        albumArt.src = DEFAULT_COVER_ART;
+      };
       albumArt.src = track.image_url || DEFAULT_COVER_ART;
     }
 
@@ -1806,7 +1822,7 @@ class App {
   }
 
   // OpenSpot Music Hub Methods
-  async searchOpenSpot(query, page = 1, append = false) {
+  async searchOpenSpot(query, page = 1, append = false, autoPlayDemo = false) {
     const grid = document.getElementById('openspot-results-grid');
     const titleEl = document.getElementById('openspot-section-title');
     const countEl = document.getElementById('openspot-results-count');
@@ -1843,11 +1859,18 @@ class App {
         this.openSpotCurrentResults.push(...newTracks);
       }
 
-      if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i> Search Results: "${query}"`;
+      if (titleEl) titleEl.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i> Search Results: "${this.escapeHtml(query)}"`;
       if (countEl) countEl.innerText = `${this.openSpotCurrentResults.length} tracks`;
 
       this.renderOpenSpotGrid(this.openSpotCurrentResults);
       this._updateOpenSpotBulkActions();
+
+      // If user searched explicitly, immediately play the top demo track!
+      if (autoPlayDemo && results.length > 0) {
+        const topJson = encodeURIComponent(JSON.stringify(results[0]));
+        this.previewOpenSpotTrack(topJson);
+        this.showToast(`🎶 Now Playing Demo: "${results[0].title}" by ${results[0].artist_name}`);
+      }
 
       if (loadMoreContainer) {
         if (results.length >= 15) {
@@ -2088,7 +2111,52 @@ class App {
       return;
     }
 
-    grid.innerHTML = tracks.map((track, idx) => {
+    let heroHtml = '';
+    if (this.openSpotMode === 'search' && tracks.length > 0) {
+      const top = tracks[0];
+      const topCover = top.image_url || DEFAULT_COVER_ART;
+      const topJson = encodeURIComponent(JSON.stringify(top));
+      const isImported = this.importedTrackIds.has(top.song_id);
+
+      heroHtml = `
+        <div class="openspot-hero-demo-card" style="grid-column:1/-1; margin-bottom:18px; background:linear-gradient(135deg, rgba(29, 185, 84, 0.18), rgba(18, 18, 18, 0.95)); border:1px solid rgba(29, 185, 84, 0.4); border-radius:16px; padding:20px; display:flex; gap:20px; align-items:center; box-shadow:0 12px 32px rgba(0,0,0,0.5); flex-wrap:wrap;">
+          <div style="position:relative; width:130px; height:130px; flex-shrink:0; border-radius:12px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+            <img src="${topCover}" alt="${this.escapeHtml(top.title)}" style="width:100%; height:100%; object-fit:cover;" onerror="this.onerror=null;this.src='${DEFAULT_COVER_ART}'">
+            <button class="btn-hero-play" onclick="window.app.previewOpenSpotTrack('${topJson}')" title="Play Demo Now" style="position:absolute; inset:0; margin:auto; width:52px; height:52px; border-radius:50%; background:var(--accent-green); border:none; color:#000; font-size:20px; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(29, 185, 84, 0.6); transition:transform 0.2s;">
+              <i class="fa-solid fa-play" style="margin-left:3px;"></i>
+            </button>
+          </div>
+          <div style="flex:1; min-width:240px;">
+            <div style="display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:20px; background:rgba(29, 185, 84, 0.25); color:var(--accent-green); font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">
+              <i class="fa-solid fa-bolt"></i> Live Fetched Demo
+            </div>
+            <h2 style="font-size:22px; font-weight:800; color:#fff; margin:0 0 6px 0; line-height:1.2;">${this.escapeHtml(top.title)}</h2>
+            <div style="font-size:13.5px; color:var(--text-secondary); margin-bottom:12px;">
+              <strong style="color:var(--text-primary);">${this.escapeHtml(top.artist_name)}</strong> • ${this.escapeHtml(top.album || 'Single')}
+            </div>
+            <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--text-muted); margin-bottom:14px;">
+              <span><i class="fa-solid fa-music" style="color:var(--accent-green)"></i> ${this.escapeHtml(top.genre || 'Music')}</span>
+              <span><i class="fa-solid fa-clock"></i> ${top.duration_formatted || '3:30'}</span>
+              <span><i class="fa-solid fa-tower-broadcast" style="color:var(--accent-amber)"></i> 320kbps MP4 Demo</span>
+              <span><i class="fa-solid fa-wave-square" style="color:#a55eea"></i> Energy: ${(top.energy||0.7).toFixed(2)}</span>
+            </div>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <button class="btn-primary" onclick="window.app.previewOpenSpotTrack('${topJson}')" style="padding:9px 22px; font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:8px;">
+                <i class="fa-solid fa-play"></i> Play Demo Stream
+              </button>
+              <button class="btn-secondary" onclick="window.app.addTrackToQueue(JSON.parse(decodeURIComponent('${topJson}')), false)" style="padding:9px 16px; font-size:13px;">
+                <i class="fa-solid fa-plus"></i> Add to Queue
+              </button>
+              <button class="btn-secondary btn-import-dl ${isImported ? 'imported' : ''}" id="btn-hero-import-${top.song_id}" onclick="window.app.importOpenSpotTrack('${topJson}')" style="padding:9px 16px; font-size:13px;">
+                <i class="fa-solid ${isImported ? 'fa-check' : 'fa-brain'}"></i> ${isImported ? 'In Catalog' : 'Import to DL'}
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const cardsHtml = tracks.map((track, idx) => {
       const cover = track.image_url || DEFAULT_COVER_ART;
       const isImported = this.importedTrackIds.has(track.song_id);
       const isSelected = this.selectedOpenSpotIds.has(track.song_id);
@@ -2101,11 +2169,11 @@ class App {
               <input type="checkbox" class="openspot-track-checkbox" ${isSelected ? 'checked' : ''}
                 onchange="window.app.toggleOpenSpotSelection('${track.song_id}')">
             </label>
-            <img class="card-cover" src="${cover}" alt="${track.title}">
+            <img class="card-cover" src="${cover}" alt="${this.escapeHtml(track.title)}" onerror="this.onerror=null;this.src='${DEFAULT_COVER_ART}'">
             <div class="card-content">
-              <div class="card-title" title="${track.title}">${track.title}</div>
-              <div class="card-artist" title="${track.artist_name}">${track.artist_name}</div>
-              <div class="card-album" title="${track.album || ''}">${track.album || ''}</div>
+              <div class="card-title" title="${this.escapeHtml(track.title)}">${this.escapeHtml(track.title)}</div>
+              <div class="card-artist" title="${this.escapeHtml(track.artist_name)}">${this.escapeHtml(track.artist_name)}</div>
+              <div class="card-album" title="${this.escapeHtml(track.album || '')}">${this.escapeHtml(track.album || '')}</div>
             </div>
           </div>
 
@@ -2117,8 +2185,8 @@ class App {
           </div>
 
           <div class="card-actions-row">
-            <button class="btn-preview-stream" onclick="window.app.previewOpenSpotTrack('${jsonStr}')">
-              <i class="fa-solid fa-play"></i> Stream
+            <button class="btn-preview-stream" onclick="window.app.previewOpenSpotTrack('${jsonStr}')" title="Play 320kbps Stream Demo">
+              <i class="fa-solid fa-play"></i> Play Demo
             </button>
             <button class="btn-small" onclick="window.app.addTrackToQueue(JSON.parse(decodeURIComponent('${jsonStr}')), false)" title="Add to Queue">
               <i class="fa-solid fa-plus"></i> Queue
@@ -2130,6 +2198,8 @@ class App {
         </div>
       `;
     }).join('');
+
+    grid.innerHTML = heroHtml + cardsHtml;
   }
 
   previewOpenSpotTrack(encodedJson) {
@@ -2249,6 +2319,7 @@ class App {
       if (!res.ok) throw new Error(`Catalog fetch failed (${res.status})`);
       const data = await res.json();
       const songs = data.songs || data;
+      const isOnline = Boolean(data.fetched_online);
       const total = data.total != null ? data.total : songs.length;
 
       // Clean up previous online promo banner if any
@@ -2264,12 +2335,12 @@ class App {
                   <div style="width:52px; height:52px; border-radius:50%; background:rgba(29, 185, 84, 0.15); display:flex; align-items:center; justify-content:center; color:var(--accent-green); font-size:22px;">
                     <i class="fa-solid fa-globe"></i>
                   </div>
-                  <strong style="font-size:16px; color:var(--text-primary);">"${this.escapeHtml(query)}" not found in local catalog</strong>
+                  <strong style="font-size:16px; color:var(--text-primary);">"${this.escapeHtml(query)}" not found</strong>
                   <p style="font-size:13px; color:var(--text-secondary); margin:0; line-height:1.5;">
-                    The local offline benchmark dataset only holds 1,592 songs. You can search, stream in HQ 320kbps, and import millions of songs directly from OpenSpot!
+                    Could not find matches for this query. Search across millions of songs in OpenSpot online catalog!
                   </p>
                   <button class="btn-primary" style="margin-top:6px; padding:10px 22px; font-weight:600; cursor:pointer;" onclick="window.app.switchToOpenSpotSearch('${this.escapeHtml(query)}')">
-                    <i class="fa-solid fa-magnifying-glass"></i> Search "${this.escapeHtml(query)}" on OpenSpot (Millions of Songs)
+                    <i class="fa-solid fa-magnifying-glass"></i> Search "${this.escapeHtml(query)}" on OpenSpot
                   </button>
                 </div>
               </td>
@@ -2286,31 +2357,63 @@ class App {
         return;
       }
 
+      // If fetched online in real-time, show banner
+      if (isOnline) {
+        const promo = document.createElement('div');
+        promo.id = 'catalog-online-search-banner';
+        promo.style.cssText = 'margin:12px auto; padding:14px 20px; border-radius:12px; background:linear-gradient(135deg, rgba(29, 185, 84, 0.18), rgba(75, 123, 236, 0.18)); border:1px solid rgba(29, 185, 84, 0.4); display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;';
+        promo.innerHTML = `
+          <div style="display:flex; align-items:center; gap:12px;">
+            <i class="fa-solid fa-cloud-arrow-down" style="color:var(--accent-green); font-size:22px;"></i>
+            <div>
+              <div style="font-weight:700; font-size:14px; color:#fff;">Live OpenSpot Online Fetch: "${this.escapeHtml(query)}"</div>
+              <div style="font-size:12.5px; color:var(--text-secondary);">Fetched ${songs.length} tracks with HQ 320kbps audio demos from OpenSpot. Click <strong>Play Demo</strong> to hear real audio immediately!</div>
+            </div>
+          </div>
+          <button class="btn-small btn-primary" onclick="window.app.switchToOpenSpotSearch('${this.escapeHtml(query)}')" style="padding:8px 18px; font-weight:700; cursor:pointer;">
+            <i class="fa-solid fa-up-right-from-square"></i> Open in OpenSpot Hub
+          </button>
+        `;
+        const cardParent = tbody.closest('.card') || tbody.parentElement;
+        if (cardParent && cardParent.parentElement) {
+          cardParent.parentElement.insertBefore(promo, cardParent);
+        }
+      }
+
       const renderRows = songs.map(s => {
         const cover = s.image_url || DEFAULT_COVER_ART;
+        const songOnline = Boolean(s.is_online_fetch || isOnline);
+        const jsonStr = encodeURIComponent(JSON.stringify(s));
         return `
           <tr>
-            <td><img class="catalog-thumb" src="${cover}" alt="Cover"></td>
+            <td><img class="catalog-thumb" src="${cover}" alt="Cover" onerror="this.onerror=null;this.src='${DEFAULT_COVER_ART}'"></td>
             <td>
-              <strong>${s.title}</strong>
-              <div style="font-size:11.5px; color:var(--text-secondary);">${s.artist_name}</div>
+              <strong>${this.escapeHtml(s.title)}</strong>
+              ${songOnline ? '<span style="display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700; background:rgba(29,185,84,0.25); color:var(--accent-green); padding:2px 7px; border-radius:12px; margin-left:6px;"><i class="fa-solid fa-bolt"></i> ONLINE DEMO</span>' : ''}
+              <div style="font-size:11.5px; color:var(--text-secondary);">${this.escapeHtml(s.artist_name)}</div>
             </td>
-            <td><span class="track-genre-badge">${s.genre}</span></td>
+            <td><span class="track-genre-badge">${this.escapeHtml(s.genre)}</span></td>
             <td>${(s.energy||0).toFixed(2)}</td>
             <td>${(s.danceability||0).toFixed(2)}</td>
             <td>${(s.valence||0).toFixed(2)}</td>
             <td>${Math.round(s.tempo||0)} BPM</td>
             <td>
               <div style="display:flex; gap:6px;">
-                <button class="btn-small" onclick="window.app.playCatalogSong('${s.song_id}')" title="Play Now">
-                  <i class="fa-solid fa-play"></i> Play
+                <button class="btn-small" onclick="${songOnline ? `window.app.previewOpenSpotTrack('${jsonStr}')` : `window.app.playCatalogSong('${s.song_id}')`}" title="Play Demo Now" style="${songOnline ? 'background:var(--accent-green); color:#000; font-weight:700;' : ''}">
+                  <i class="fa-solid fa-play"></i> Play Demo
                 </button>
-                <button class="btn-small" onclick="window.app.addTrackToQueue(${JSON.stringify(s).replace(/"/g, '&quot;')}, false)" title="Add to Queue">
+                <button class="btn-small" onclick="window.app.addTrackToQueue(JSON.parse(decodeURIComponent('${jsonStr}')), false)" title="Add to Queue">
                   <i class="fa-solid fa-plus"></i> Queue
                 </button>
+                ${songOnline ? `
+                <button class="btn-small btn-import-dl" onclick="window.app.importOpenSpotTrack('${jsonStr}')" title="Import into DL model">
+                  <i class="fa-solid fa-brain"></i> Import
+                </button>
+                ` : `
                 <button class="btn-small" onclick="window.app.openRelatedHub('${s.song_id}')" title="Find Related Songs (Vector Search)">
                   <i class="fa-solid fa-wand-magic-sparkles"></i> Related
                 </button>
+                `}
               </div>
             </td>
           </tr>
@@ -2990,7 +3093,13 @@ class App {
     const curEl = document.getElementById('sp-time-cur');
     const scrubber = document.getElementById('sp-audio-scrubber');
 
-    if (coverEl) coverEl.src = cover;
+    if (coverEl) {
+      coverEl.onerror = () => {
+        coverEl.onerror = null;
+        coverEl.src = DEFAULT_COVER_ART;
+      };
+      coverEl.src = cover;
+    }
     if (titleEl) titleEl.innerText = t.title || 'No Track';
     if (artistEl) artistEl.innerText = `${t.artist_name || 'Artist'} • ${t.genre || 'Music'}`;
 
